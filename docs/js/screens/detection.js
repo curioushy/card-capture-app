@@ -85,7 +85,9 @@ export async function renderDetection(el) {
       processingDone[idx] = true;
       hideStatus();
 
-      if (cards.length === 0) showToast(`No cards detected — add manually`);
+      if (cards.length === 1 && cards[0].isFallback) {
+        showToast('Card edges unclear — showing full image. Crop manually if needed.');
+      }
     } catch (e) {
       hideStatus();
       console.warn('Detection error:', e);
@@ -143,7 +145,7 @@ export async function renderDetection(el) {
     cardList.innerHTML = cards.map((card, i) => `
       <div class="detection-card-item ${card.accepted ? 'accepted' : 'rejected'}" data-index="${i}">
         <canvas class="detection-card-thumb" id="thumb-${i}"></canvas>
-        <span class="detection-card-num">Card ${i + 1}</span>
+        <span class="detection-card-num">Card ${i + 1}${card.isFallback ? ' (full image)' : ''}</span>
         <div class="detection-toggle-btns">
           <button class="${card.accepted ? 'accept' : ''}" data-action="accept" data-index="${i}">✓</button>
           <button class="${!card.accepted ? 'reject' : ''}" data-action="reject" data-index="${i}">✕</button>
