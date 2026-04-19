@@ -1,4 +1,4 @@
-const CACHE_NAME = 'card-capture-v4';
+const CACHE_NAME = 'card-capture-v5';
 
 const APP_SHELL = [
   '/card-capture-app/',

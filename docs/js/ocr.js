@@ -26,7 +26,8 @@ async function getWorker() {
 
 export async function runOCR(canvas, onProgress) {
   const w = await getWorker();
-  const result = await w.recognize(canvas, {}, {
+  const prepped = preprocessForOCR(canvas);
+  const result = await w.recognize(prepped, {}, {
     blocks: false, hocr: false, tsv: false, text: true,
   });
 
@@ -40,6 +41,78 @@ export async function runOCR(canvas, onProgress) {
       conf: wrd.confidence,
     })),
   };
+}
+
+// Boost OCR accuracy: upscale to ~300 DPI equivalent, grayscale, contrast
+// stretch, adaptive threshold (binarize). Falls back to plain grayscale if
+// OpenCV isn't available.
+export function preprocessForOCR(srcCanvas) {
+  // Target longest side ≈ 1500px (business card at ~300 DPI)
+  const TARGET = 1500;
+  const longest = Math.max(srcCanvas.width, srcCanvas.height);
+  const scale = longest < TARGET ? TARGET / longest : 1;
+  const w = Math.round(srcCanvas.width * scale);
+  const h = Math.round(srcCanvas.height * scale);
+
+  // Upscale via canvas (bilinear)
+  const upscaled = document.createElement('canvas');
+  upscaled.width = w; upscaled.height = h;
+  const uctx = upscaled.getContext('2d');
+  uctx.imageSmoothingEnabled = true;
+  uctx.imageSmoothingQuality = 'high';
+  uctx.drawImage(srcCanvas, 0, 0, w, h);
+
+  if (!window.cv || !cv.Mat) return canvasGrayscaleFallback(upscaled);
+
+  try {
+    const src = cv.imread(upscaled);
+    const gray = new cv.Mat();
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+    // CLAHE: contrast-limited adaptive histogram equalization — handles
+    // uneven lighting on glossy or shaded cards.
+    const clahe = new cv.CLAHE(2.0, new cv.Size(8, 8));
+    const equalized = new cv.Mat();
+    clahe.apply(gray, equalized);
+
+    // Light denoise while preserving edges
+    const blurred = new cv.Mat();
+    cv.medianBlur(equalized, blurred, 3);
+
+    // Adaptive threshold → binary image. blockSize must be odd; tune so
+    // it covers ~typical character height. C is bias.
+    const binary = new cv.Mat();
+    cv.adaptiveThreshold(
+      blurred, binary, 255,
+      cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY,
+      31, 15
+    );
+
+    const out = document.createElement('canvas');
+    out.width = w; out.height = h;
+    cv.imshow(out, binary);
+
+    src.delete(); gray.delete(); clahe.delete();
+    equalized.delete(); blurred.delete(); binary.delete();
+    return out;
+  } catch (e) {
+    console.warn('OCR preprocess failed, falling back to grayscale:', e);
+    return canvasGrayscaleFallback(upscaled);
+  }
+}
+
+function canvasGrayscaleFallback(canvas) {
+  const ctx = canvas.getContext('2d');
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const px = data.data;
+  for (let i = 0; i < px.length; i += 4) {
+    // Luminance + slight contrast boost around midpoint
+    const y = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+    const boosted = Math.max(0, Math.min(255, (y - 128) * 1.3 + 128));
+    px[i] = px[i + 1] = px[i + 2] = boosted;
+  }
+  ctx.putImageData(data, 0, 0);
+  return canvas;
 }
 
 export async function terminateWorker() {
