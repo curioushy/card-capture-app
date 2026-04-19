@@ -19,8 +19,10 @@ export function loadTesseract() {
 async function getWorker() {
   if (worker) return worker;
   await loadTesseract();
-  // v5: createWorker(langs, oem?, options?) — workerPath/corePath auto-resolved from CDN
   worker = await Tesseract.createWorker('eng+chi_sim');
+  // PSM 6: assume single uniform block of text. Much better than the default
+  // auto-segmentation (PSM 3) for compact business cards.
+  await worker.setParameters({ tessedit_pageseg_mode: '6' });
   return worker;
 }
 
@@ -69,31 +71,22 @@ export function preprocessForOCR(srcCanvas) {
     const gray = new cv.Mat();
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
 
-    // CLAHE: contrast-limited adaptive histogram equalization — handles
-    // uneven lighting on glossy or shaded cards.
-    const clahe = new cv.CLAHE(2.0, new cv.Size(8, 8));
+    // CLAHE for contrast — gentle settings (clipLimit 1.5) so glossy cards
+    // with QR codes don't blow out into noise.
+    const clahe = new cv.CLAHE(1.5, new cv.Size(8, 8));
     const equalized = new cv.Mat();
     clahe.apply(gray, equalized);
 
-    // Light denoise while preserving edges
-    const blurred = new cv.Mat();
-    cv.medianBlur(equalized, blurred, 3);
-
-    // Adaptive threshold → binary image. blockSize must be odd; tune so
-    // it covers ~typical character height. C is bias.
-    const binary = new cv.Mat();
-    cv.adaptiveThreshold(
-      blurred, binary, 255,
-      cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY,
-      31, 15
-    );
+    // NOTE: previously we ran cv.adaptiveThreshold here. That destroyed
+    // subtle gray text (subtitles, light-color logos) and turned QR codes
+    // into noise that confused Tesseract. Tesseract's own internal Otsu
+    // step handles binarization better when given a clean grayscale image.
 
     const out = document.createElement('canvas');
     out.width = w; out.height = h;
-    cv.imshow(out, binary);
+    cv.imshow(out, equalized);
 
-    src.delete(); gray.delete(); clahe.delete();
-    equalized.delete(); blurred.delete(); binary.delete();
+    src.delete(); gray.delete(); clahe.delete(); equalized.delete();
     return out;
   } catch (e) {
     console.warn('OCR preprocess failed, falling back to grayscale:', e);
@@ -164,15 +157,37 @@ function extractEmails(text) {
 
 function extractPhones(text, emails) {
   const emailStr = emails.join(' ');
-  const raw = text.match(/(\+?[\d][\d\s\-().]{6,18}[\d])/g) || [];
-  return [...new Set(
-    raw
-      .map(p => p.trim())
-      .filter(p => {
-        const digits = p.replace(/\D/g, '');
-        return digits.length >= 7 && digits.length <= 15 && !emailStr.includes(p);
-      })
-  )];
+  // Look at line-by-line context so we can reject company registration numbers
+  // that typically appear in patterns like "BERHAD 200601032342 (752101-D)".
+  const lines = text.split('\n');
+  const found = [];
+
+  for (const line of lines) {
+    // Skip lines that look like a company registration: digits followed by
+    // parentheses with another id ("(752101-D)").
+    if (/\d{6,}\s*\(\s*[\w-]+\s*\)/.test(line)) continue;
+
+    const matches = line.match(/(\+?[\d][\d\s\-().]{6,18}[\d])/g) || [];
+    for (const m of matches) {
+      const cleaned = m.trim();
+      const digits = cleaned.replace(/\D/g, '');
+
+      if (digits.length < 7 || digits.length > 15) continue;
+      if (emailStr.includes(cleaned)) continue;
+
+      // Reject pure digit blobs ≥10 digits with no spaces / dashes / plus —
+      // these are almost always reg numbers, not phones.
+      if (digits.length >= 10 && !/[\s\-+()]/.test(cleaned)) continue;
+
+      // Phones almost always have a + or a country/area code structure.
+      // Accept if: starts with +, OR contains a space/dash separator.
+      if (!cleaned.startsWith('+') && !/[\s\-]/.test(cleaned)) continue;
+
+      found.push(cleaned);
+    }
+  }
+
+  return [...new Set(found)];
 }
 
 function extractLinkedIn(text) {

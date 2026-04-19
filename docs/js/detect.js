@@ -41,21 +41,33 @@ export async function detectCards(imageElement) {
       const area = cv.contourArea(cnt);
       if (area < minArea) { cnt.delete(); continue; }
 
+      // Strategy 1: try approxPolyDP for clean 4–8 corner shapes
       const peri = cv.arcLength(cnt, true);
       const approx = new cv.Mat();
-      // Slightly looser epsilon to get cleaner rectangles
       cv.approxPolyDP(cnt, approx, 0.03 * peri, true);
 
-      // Accept 4–6 corners (real cards don't always approx to exactly 4)
-      if (approx.rows >= 4 && approx.rows <= 6) {
+      let corners4 = null;
+      if (approx.rows >= 4 && approx.rows <= 8) {
         const rawCorners = [];
         for (let j = 0; j < approx.rows; j++) {
           rawCorners.push({ x: approx.data32S[j * 2], y: approx.data32S[j * 2 + 1] });
         }
-        const corners4 = approx.rows === 4 ? rawCorners : reduceToFourCorners(rawCorners);
-        const ordered = orderCorners(corners4);
+        corners4 = approx.rows === 4 ? rawCorners : reduceToFourCorners(rawCorners);
+      } else {
+        // Strategy 2: fall back to minAreaRect for rounded / noisy contours
+        // Cards with rounded corners or shadow halos can approximate to 9+ vertices.
+        const rect = cv.minAreaRect(cnt);
+        const w = rect.size.width, h = rect.size.height;
+        const aspect = Math.max(w, h) / Math.min(w, h);
+        // Business cards are roughly 1.4–2.0 aspect. Reject squares & long strips.
+        if (aspect >= 1.3 && aspect <= 2.5) {
+          const box = cv.RotatedRect.points(rect);
+          corners4 = box.map(p => ({ x: p.x, y: p.y }));
+        }
+      }
 
-        // Deduplicate: skip if a nearly identical area was already found
+      if (corners4) {
+        const ordered = orderCorners(corners4);
         const areaKey = Math.round(area / (imgW * imgH * 0.005));
         if (!seenAreas.has(areaKey)) {
           seenAreas.add(areaKey);
