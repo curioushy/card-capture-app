@@ -8,7 +8,9 @@ export async function renderSettings(el) {
   await renderSettingsInner();
 
   async function renderSettingsInner() {
-    const [meta, contacts, sessions] = await Promise.all([getMeta(), listContacts(), listSessions()]);
+    const [meta, contacts, sessions, swVersion] = await Promise.all([
+      getMeta(), listContacts(), listSessions(), getSWVersion(),
+    ]);
     const dbSizeMB = (JSON.stringify({ contacts, sessions }).length / 1024 / 1024).toFixed(2);
     const withImages = contacts.filter(c => c.card_image_front).length;
 
@@ -138,6 +140,14 @@ export async function renderSettings(el) {
           <span class="settings-row-value">1.0.0</span>
         </div>
         <div class="settings-row" style="cursor:default;">
+          <span class="settings-row-label">Cache version</span>
+          <span class="settings-row-value">${swVersion}</span>
+        </div>
+        <div class="settings-row" id="checkUpdateBtn">
+          <span class="settings-row-label">Check for updates</span>
+          <span class="settings-row-arrow">›</span>
+        </div>
+        <div class="settings-row" style="cursor:default;">
           <span class="settings-row-label">Schema version</span>
           <span class="settings-row-value">${meta?.schema_version || 1}</span>
         </div>
@@ -205,6 +215,34 @@ export async function renderSettings(el) {
     el.querySelector('#githubBtn').addEventListener('click', () => {
       window.open('https://github.com/curioushy/card-capture-app', '_blank');
     });
+
+    // Check for updates
+    el.querySelector('#checkUpdateBtn')?.addEventListener('click', async () => {
+      showToast('Checking for updates…');
+      try {
+        const reg = await navigator.serviceWorker?.getRegistration();
+        if (!reg) { showToast('No service worker registered'); return; }
+        await reg.update();
+        // Force reload after a brief moment so the new SW activates
+        setTimeout(() => {
+          showToast('Reloading to apply update…');
+          setTimeout(() => location.reload(), 600);
+        }, 800);
+      } catch (e) {
+        showToast(`Update check failed: ${e.message}`);
+      }
+    });
+  }
+
+  async function getSWVersion() {
+    try {
+      if (!('caches' in window)) return 'n/a';
+      const keys = await caches.keys();
+      const ours = keys.find(k => k.startsWith('card-capture-'));
+      return ours || 'no cache';
+    } catch {
+      return 'unknown';
+    }
   }
 
   function showExportModal(format) {
