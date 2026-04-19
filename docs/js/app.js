@@ -1,4 +1,4 @@
-import { initDB } from './db.js';
+import { initDB, getOpenSession } from './db.js';
 import { renderHome } from './screens/home.js';
 import { renderNewSession } from './screens/new-session.js';
 import { renderCapture } from './screens/capture.js';
@@ -39,16 +39,13 @@ export function navigate(screenName, params = {}) {
   next.classList.add('active');
   app.currentScreen = screenName;
 
-  // Update bottom nav active state
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.screen === screenName);
   });
 
-  // Render the screen
   const renderer = SCREENS[screenName];
   if (renderer) renderer(next, params);
 
-  // Scroll to top
   next.scrollTop = 0;
 }
 
@@ -91,16 +88,43 @@ export function showToast(msg, duration = 2500) {
   toastTimer = setTimeout(() => t.classList.remove('show'), duration);
 }
 
-// Wire bottom nav
+// ─── Theme ────────────────────────────────────────────────────────────────────
+
+const THEME_KEY = 'cc-theme'; // 'system' | 'light' | 'dark'
+
+export function getTheme() {
+  return localStorage.getItem(THEME_KEY) || 'system';
+}
+
+export function setTheme(theme) {
+  localStorage.setItem(THEME_KEY, theme);
+  applyTheme(theme);
+}
+
+function applyTheme(theme) {
+  const root = document.documentElement;
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const useDark = theme === 'dark' || (theme === 'system' && prefersDark);
+  root.setAttribute('data-theme', useDark ? 'dark' : 'light');
+}
+
+function initTheme() {
+  applyTheme(getTheme());
+  // Re-apply if system preference changes while app is open
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (getTheme() === 'system') applyTheme('system');
+  });
+}
+
+// ─── Nav ──────────────────────────────────────────────────────────────────────
+
 function initNav() {
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => navigate(btn.dataset.screen));
   });
-
   document.getElementById('settingsBtn').addEventListener('click', () => navigate('settings'));
 }
 
-// Offline detection
 function initOffline() {
   const update = () => setSyncDot(navigator.onLine ? 'green' : 'grey');
   window.addEventListener('online', update);
@@ -108,7 +132,6 @@ function initOffline() {
   update();
 }
 
-// Register Service Worker
 async function registerSW() {
   if ('serviceWorker' in navigator) {
     try {
@@ -119,12 +142,21 @@ async function registerSW() {
   }
 }
 
-// Boot
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+
 async function init() {
   await initDB();
+  initTheme();
   initNav();
   initOffline();
   registerSW();
+
+  // Resume any session that was open when app last closed
+  const openSession = await getOpenSession();
+  if (openSession) {
+    app.currentSession = openSession;
+  }
+
   navigate('home');
 }
 

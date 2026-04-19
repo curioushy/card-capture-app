@@ -1,4 +1,4 @@
-import { navigate, showToast } from '../app.js';
+import { navigate, showToast, getTheme, setTheme } from '../app.js';
 import { getMeta, listContacts, listSessions, deleteSession, clearAll } from '../db.js';
 import { exportJSON, exportCSV, exportVCard } from '../export.js';
 import { importFile, importJSON } from '../import.js';
@@ -87,6 +87,24 @@ export async function renderSettings(el) {
         </div>
       </div>
 
+      <!-- Appearance -->
+      <div class="section-title">Appearance</div>
+      <div class="settings-list" style="margin:0 16px;">
+        <div class="settings-row" style="cursor:default;gap:12px;">
+          <span class="settings-row-label">Theme</span>
+          <div style="display:flex;gap:6px;" id="themeSelector">
+            ${['system','light','dark'].map(t => `
+              <button class="theme-btn ${getTheme()===t?'active':''}" data-theme="${t}"
+                style="flex:1;padding:7px 0;border-radius:var(--radius-sm);border:2px solid ${getTheme()===t?'var(--accent)':'var(--border)'};
+                background:${getTheme()===t?'var(--accent-light)':'var(--surface)'};
+                color:${getTheme()===t?'var(--accent)':'var(--text-muted)'};
+                font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);">
+                ${t[0].toUpperCase()+t.slice(1)}
+              </button>`).join('')}
+          </div>
+        </div>
+      </div>
+
       <!-- About -->
       <div class="section-title">About</div>
       <div class="settings-list">
@@ -130,6 +148,21 @@ export async function renderSettings(el) {
 
     // Clear all
     el.querySelector('#clearAllBtn').addEventListener('click', () => showClearAllModal());
+
+    // Theme
+    el.querySelector('#themeSelector').addEventListener('click', e => {
+      const btn = e.target.closest('.theme-btn');
+      if (!btn) return;
+      setTheme(btn.dataset.theme);
+      // Update button styles in-place
+      el.querySelectorAll('.theme-btn').forEach(b => {
+        const active = b.dataset.theme === btn.dataset.theme;
+        b.classList.toggle('active', active);
+        b.style.borderColor = active ? 'var(--accent)' : 'var(--border)';
+        b.style.background  = active ? 'var(--accent-light)' : 'var(--surface)';
+        b.style.color       = active ? 'var(--accent)' : 'var(--text-muted)';
+      });
+    });
 
     // GitHub
     el.querySelector('#githubBtn').addEventListener('click', () => {

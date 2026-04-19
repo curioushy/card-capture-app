@@ -1,5 +1,6 @@
-/* Design system variables */
-:root {
+/* Design system variables — light (default) */
+:root,
+[data-theme="light"] {
   --bg: #f5f5f5;
   --surface: #ffffff;
   --border: #e0e0e0;
@@ -10,11 +11,31 @@
   --t1: #c0392b;  --t1-bg: #fdf0ef;
   --t2: #e67e22;  --t2-bg: #fef9ec;
   --t3: #2980b9;  --t3-bg: #eaf4fd;
-  --t4: #888888;  --t4-bg: #f5f5f5;
+  --t4: #888888;  --t4-bg: #f0f0f0;
   --danger: #e74c3c;
+  --shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+  --bg: #111111;
+  --surface: #1e1e1e;
+  --border: #2e2e2e;
+  --text: #f0f0f0;
+  --text-muted: #888888;
+  --accent: #2ecc71;
+  --accent-light: #0d2b1a;
+  --t1: #e74c3c;  --t1-bg: #2b1010;
+  --t2: #e67e22;  --t2-bg: #2b1d0a;
+  --t3: #3498db;  --t3-bg: #0a1e2b;
+  --t4: #888888;  --t4-bg: #1a1a1a;
+  --danger: #e74c3c;
+  --shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+
+:root {
   --radius: 12px;
   --radius-sm: 8px;
-  --shadow: 0 2px 8px rgba(0,0,0,0.08);
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --top-bar-h: 52px;
   --bottom-nav-h: 64px;

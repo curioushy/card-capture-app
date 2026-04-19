@@ -1,6 +1,6 @@
 import { navigate, app, showStatus, hideStatus, showToast } from '../app.js';
 import { runOCR, parseFields, loadTesseract, terminateWorker } from '../ocr.js';
-import { createContact, compressImage } from '../db.js';
+import { createContact, compressImage, updateSession } from '../db.js';
 
 export async function renderConfirm(el) {
   if (!app.detectedCards || app.detectedCards.length === 0) {
@@ -284,7 +284,10 @@ export async function renderConfirm(el) {
       app.detectedCards = [];
       navigate('capture');
     });
-    el.querySelector('#closeSessionBtn').addEventListener('click', () => {
+    el.querySelector('#closeSessionBtn').addEventListener('click', async () => {
+      if (app.currentSession) {
+        await updateSession(app.currentSession.id, { is_open: false });
+      }
       app.currentSession = null;
       app.pendingPhotos = [];
       app.detectedCards = [];

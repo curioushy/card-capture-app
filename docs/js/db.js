@@ -83,9 +83,14 @@ function cursorAll(store, indexName, query) {
 
 // Sessions
 export async function createSession(data) {
-  const session = { id: crypto.randomUUID(), created_at: Date.now(), updated_at: Date.now(), ...data };
+  const session = { id: crypto.randomUUID(), is_open: true, created_at: Date.now(), updated_at: Date.now(), ...data };
   await req2promise(tx('sessions', 'readwrite').add(session));
   return session;
+}
+
+export async function getOpenSession() {
+  const all = await cursorAll(tx('sessions'));
+  return all.find(s => s.is_open) || null;
 }
 
 export async function getSession(id) {
