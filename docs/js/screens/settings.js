@@ -12,7 +12,26 @@ export async function renderSettings(el) {
     const dbSizeMB = (JSON.stringify({ contacts, sessions }).length / 1024 / 1024).toFixed(2);
     const withImages = contacts.filter(c => c.card_image_front).length;
 
+    const lastExport = meta?.last_export_at;
+    const daysSince = lastExport ? Math.floor((Date.now() - lastExport) / 86400000) : null;
+    const backupWarning = contacts.length > 0 && (daysSince === null || daysSince >= 7);
+    const lastExportStr = lastExport
+      ? `Last backup ${daysSince === 0 ? 'today' : daysSince === 1 ? 'yesterday' : `${daysSince} days ago`}`
+      : 'Never backed up';
+
     el.querySelector('#settingsInner').innerHTML = `
+
+      <!-- Quick Backup -->
+      ${backupWarning ? `
+        <div style="margin:12px 16px 0;background:#fff3cd;border:1px solid #ffc107;border-radius:var(--radius);padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#856404;">Back up your data</div>
+            <div style="font-size:12px;color:#856404;margin-top:2px;">${lastExportStr}</div>
+          </div>
+          <button class="btn btn-primary" id="quickBackupBannerBtn" style="padding:8px 14px;font-size:13px;flex-shrink:0;">
+            Back up now
+          </button>
+        </div>` : ''}
 
       <!-- Storage -->
       <div class="section-title">Storage</div>
@@ -38,8 +57,14 @@ export async function renderSettings(el) {
       <!-- Export -->
       <div class="section-title">Export</div>
       <div class="settings-list">
+        <div class="settings-row" id="quickBackupBtn" style="background:var(--accent-light);">
+          <span class="settings-row-label" style="color:var(--accent);font-weight:700;">
+            ⚡ Quick backup — all data as JSON
+          </span>
+          <span style="font-size:11px;color:var(--text-muted);">${lastExportStr}</span>
+        </div>
         <div class="settings-row" id="exportJSONBtn">
-          <span class="settings-row-label">Export as JSON (full backup)</span>
+          <span class="settings-row-label">Export JSON (custom scope…)</span>
           <span class="settings-row-arrow">›</span>
         </div>
         <div class="settings-row" id="exportCSVBtn">
@@ -131,6 +156,18 @@ export async function renderSettings(el) {
   }
 
   function bindActions(sessions) {
+    // Quick backup
+    el.querySelector('#quickBackupBtn').addEventListener('click', async () => {
+      await exportJSON();
+      showToast('Backup downloaded ✓');
+      renderSettingsInner(); // refresh "last backup" label
+    });
+    el.querySelector('#quickBackupBannerBtn')?.addEventListener('click', async () => {
+      await exportJSON();
+      showToast('Backup downloaded ✓');
+      renderSettingsInner();
+    });
+
     // Export
     el.querySelector('#exportJSONBtn').addEventListener('click', () => showExportModal('json'));
     el.querySelector('#exportCSVBtn').addEventListener('click', () => showExportModal('csv'));

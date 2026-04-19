@@ -92,9 +92,16 @@ export async function renderContactDetail(el, params = {}) {
           </div>
 
           <!-- Actions -->
-          <div style="display:flex;gap:10px;margin-top:8px;">
-            <button class="btn btn-secondary" id="exportVCardBtn" style="flex:1;">Export vCard</button>
-            <button class="btn btn-danger" id="deleteBtn" style="flex:1;">Delete</button>
+          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+            <button class="btn btn-secondary" id="exportVCardBtn" style="flex:1;min-width:100px;">Export vCard</button>
+            <button class="btn btn-secondary" id="emailContactBtn" style="flex:1;min-width:100px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                <polyline points="22,6 12,13 2,6"/>
+              </svg>
+              Email
+            </button>
+            <button class="btn btn-danger" id="deleteBtn" style="flex:1;min-width:80px;">Delete</button>
           </div>
         </div>
       </div>
@@ -165,6 +172,21 @@ export async function renderContactDetail(el, params = {}) {
     // Export vCard
     el.querySelector('#exportVCardBtn').addEventListener('click', () => {
       exportVCard([contact]);
+    });
+
+    // Send contact info by email
+    el.querySelector('#emailContactBtn').addEventListener('click', () => {
+      const lines = [];
+      if (contact.name)    lines.push(contact.name);
+      if (contact.title)   lines.push(contact.title);
+      if (contact.company) lines.push(contact.company);
+      if ((contact.emails||[]).length) lines.push('Email: ' + contact.emails.join(', '));
+      if ((contact.phones||[]).length) lines.push('Phone: ' + contact.phones.join(', '));
+      if (contact.linkedin) lines.push('LinkedIn: https://' + contact.linkedin.replace(/^https?:\/\//,''));
+      if (contact.website)  lines.push('Website: ' + contact.website);
+      const subject = encodeURIComponent(`Contact: ${contact.name || 'New contact'}`);
+      const body = encodeURIComponent(lines.join('\n'));
+      window.location.href = `mailto:?subject=${subject}&body=${body}`;
     });
 
     // Delete

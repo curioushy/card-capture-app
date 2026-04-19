@@ -1,4 +1,4 @@
-const CACHE_NAME = 'card-capture-v1';
+const CACHE_NAME = 'card-capture-v2';
 
 const APP_SHELL = [
   '/card-capture-app/',
@@ -20,6 +20,7 @@ const APP_SHELL = [
   '/card-capture-app/js/screens/confirm.js',
   '/card-capture-app/js/screens/contacts.js',
   '/card-capture-app/js/screens/contact-detail.js',
+  '/card-capture-app/js/screens/sessions.js',
   '/card-capture-app/js/screens/settings.js',
   '/card-capture-app/assets/icon-192.png',
   '/card-capture-app/assets/icon-512.png',

@@ -6,6 +6,7 @@ import { renderDetection } from './screens/detection.js';
 import { renderConfirm } from './screens/confirm.js';
 import { renderContacts } from './screens/contacts.js';
 import { renderContactDetail } from './screens/contact-detail.js';
+import { renderSessions } from './screens/sessions.js';
 import { renderSettings } from './screens/settings.js';
 
 // Global app state
@@ -26,6 +27,7 @@ const SCREENS = {
   'confirm':        renderConfirm,
   'contacts':       renderContacts,
   'contact-detail': renderContactDetail,
+  'sessions':       renderSessions,
   'settings':       renderSettings,
 };
 
