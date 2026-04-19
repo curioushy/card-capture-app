@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(node tests/test.mjs)",
+      "Read(//usr/local/**)",
+      "Read(//opt/homebrew/bin/**)",
+      "Bash(command -v node)",
+      "Bash(nvm use *)",
+      "Bash(python3 tests/test.py)",
+      "Bash(gh auth *)",
+      "Bash(git --version)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\('html_url'\\) or d.get\\('message','unknown error'\\)\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\('html_url'\\) or d.get\\('message',''\\)\\)\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" \"https://curioushy.github.io/card-capture-app/service-worker.js?$\\(date +%s\\)\")",
+      "Bash(curl -s \"https://curioushy.github.io/card-capture-app/service-worker.js?$\\(date +%s\\)\")"
+    ]
+  }
+}

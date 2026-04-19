@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Card Capture</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f5f5f5;
+    --surface: #ffffff;
+    --border: #e0e0e0;
+    --text: #1a1a1a;
+    --muted: #888;
+    --accent: #1d6f42;
+    --accent-light: #e8f5ee;
+    --t1: #c0392b; --t1-bg: #fdf0ef;
+    --t2: #e67e22; --t2-bg: #fef9ec;
+    --t3: #2980b9; --t3-bg: #eaf4fd;
+    --t4: #888;    --t4-bg: #f5f5f5;
+    --radius: 10px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 16px;
+    min-height: 100vh;
+    padding-bottom: 40px;
+  }
+
+  header {
+    background: var(--accent);
+    color: white;
+    padding: 16px 20px 14px;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+  }
+
+  header span { opacity: 0.65; font-weight: 400; font-size: 14px; margin-left: 8px; }
+
+  .container { max-width: 600px; margin: 0 auto; padding: 16px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+
+  .card h2 {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 4px;
+    margin-top: 12px;
+  }
+  label:first-of-type { margin-top: 0; }
+
+  input, textarea, select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: 15px;
+    font-family: var(--font);
+    color: var(--text);
+    background: white;
+    outline: none;
+    transition: border-color 0.15s;
+    -webkit-appearance: none;
+  }
+  input:focus, textarea:focus, select:focus {
+    border-color: var(--accent);
+  }
+  textarea { resize: vertical; min-height: 60px; }
+
+  .tier-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 8px;
+    margin-top: 0;
+  }
+
+  .tier-btn {
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 6px 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: white;
+  }
+  .tier-btn .tier-label {
+    font-size: 18px;
+    font-weight: 800;
+    display: block;
+    line-height: 1;
+  }
+  .tier-btn .tier-desc {
+    font-size: 10px;
+    color: var(--muted);
+    display: block;
+    margin-top: 4px;
+    line-height: 1.3;
+  }
+
+  .tier-btn[data-tier="1"] { border-color: #eee; }
+  .tier-btn[data-tier="1"].active { background: var(--t1-bg); border-color: var(--t1); }
+  .tier-btn[data-tier="1"].active .tier-label { color: var(--t1); }
+
+  .tier-btn[data-tier="2"] { border-color: #eee; }
+  .tier-btn[data-tier="2"].active { background: var(--t2-bg); border-color: var(--t2); }
+  .tier-btn[data-tier="2"].active .tier-label { color: var(--t2); }
+
+  .tier-btn[data-tier="3"] { border-color: #eee; }
+  .tier-btn[data-tier="3"].active { background: var(--t3-bg); border-color: var(--t3); }
+  .tier-btn[data-tier="3"].active .tier-label { color: var(--t3); }
+
+  .tier-btn[data-tier="4"] { border-color: #eee; }
+  .tier-btn[data-tier="4"].active { background: var(--t4-bg); border-color: #aaa; }
+  .tier-btn[data-tier="4"].active .tier-label { color: var(--t4); }
+
+  .generate-btn {
+    width: 100%;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 16px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-bottom: 14px;
+    transition: opacity 0.15s;
+  }
+  .generate-btn:active { opacity: 0.8; }
+
+  .output-card {
+    background: #1a1a2e;
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 14px;
+    display: none;
+  }
+  .output-card.visible { display: block; }
+
+  .output-card h2 {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: #888;
+    margin-bottom: 12px;
+  }
+
+  .notes-output {
+    background: #0d1117;
+    border-radius: 8px;
+    padding: 14px;
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 13px;
+    color: #e6edf3;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin-bottom: 12px;
+  }
+
+  .copy-btn {
+    width: 100%;
+    background: #238636;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .copy-btn.copied { background: #196127; }
+  .copy-btn:active { opacity: 0.85; }
+
+  .labels-section {
+    margin-top: 14px;
+  }
+  .labels-section h3 {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: #888;
+    margin-bottom: 10px;
+  }
+
+  .label-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  .chip {
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+  .chip.tier-t1 { background: #4a1515; color: #ff8a80; }
+  .chip.tier-t2 { background: #3d2200; color: #ffb74d; }
+  .chip.tier-t3 { background: #0d2137; color: #64b5f6; }
+  .chip.tier-t4 { background: #2a2a2a; color: #aaa; }
+  .chip.event   { background: #1e2d1e; color: #81c784; }
+  .chip.year    { background: #1a1a2e; color: #9575cd; }
+
+  .recent-events {
+    margin-top: 6px;
+  }
+  .recent-events span {
+    font-size: 12px;
+    color: var(--muted);
+    margin-right: 6px;
+  }
+  .recent-pill {
+    display: inline-block;
+    background: var(--accent-light);
+    color: var(--accent);
+    border: none;
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    margin: 2px 4px 2px 0;
+  }
+
+  .field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .hint {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+</style>
+</head>
+<body>
+
+<header>Card Capture <span>Google Contacts CRM</span></header>
+
+<div class="container">
+
+  <!-- EVENT + DATE -->
+  <div class="card">
+    <h2>Event</h2>
+    <label>Event name</label>
+    <input type="text" id="event" placeholder="e.g. Milken 2026" autocomplete="off" list="event-suggestions">
+    <datalist id="event-suggestions"></datalist>
+    <div class="recent-events" id="recent-events-wrap" style="display:none">
+      <span>Recent:</span>
+      <span id="recent-event-pills"></span>
+    </div>
+    <label>Date met</label>
+    <input type="date" id="date-met">
+  </div>
+
+  <!-- TIER -->
+  <div class="card">
+    <h2>Tier</h2>
+    <div class="tier-grid">
+      <div class="tier-btn" data-tier="1" onclick="selectTier(1)">
+        <span class="tier-label">T1</span>
+        <span class="tier-desc">Live deal</span>
+      </div>
+      <div class="tier-btn" data-tier="2" onclick="selectTier(2)">
+        <span class="tier-label">T2</span>
+        <span class="tier-desc">Priority</span>
+      </div>
+      <div class="tier-btn active" data-tier="3" onclick="selectTier(3)">
+        <span class="tier-label">T3</span>
+        <span class="tier-desc">Orbit</span>
+      </div>
+      <div class="tier-btn" data-tier="4" onclick="selectTier(4)">
+        <span class="tier-label">T4</span>
+        <span class="tier-desc">Archive</span>
+      </div>
+    </div>
+    <p class="hint" id="tier-hint" style="margin-top:10px">T3 — actively want to stay connected; future optionality.</p>
+  </div>
+
+  <!-- CONTEXT -->
+  <div class="card">
+    <h2>Context</h2>
+    <label>Intro'd by</label>
+    <input type="text" id="intro-by" placeholder="e.g. Sarah Chen  (leave blank if direct)">
+    <label>What they do <span style="font-weight:400;color:#bbb">— one line</span></label>
+    <textarea id="what-they-do" rows="2" placeholder="e.g. Runs European logistics fund, looking for Asia co-investors"></textarea>
+    <label>Their ask / my ask</label>
+    <textarea id="ask" rows="2" placeholder="e.g. They want deal flow; I want LP intro to their network"></textarea>
+  </div>
+
+  <!-- NEXT ACTION -->
+  <div class="card">
+    <h2>Next Action <span style="font-size:11px;font-weight:400;color:#bbb">(optional)</span></h2>
+    <div class="field-row">
+      <div>
+        <label>Action</label>
+        <input type="text" id="next-action" placeholder="e.g. Send fund II deck">
+      </div>
+      <div>
+        <label>By date</label>
+        <input type="date" id="next-date">
+      </div>
+    </div>
+  </div>
+
+  <!-- THEME TAGS -->
+  <div class="card">
+    <h2>Theme tags <span style="font-size:11px;font-weight:400;color:#bbb">(optional, comma-separated)</span></h2>
+    <input type="text" id="themes" placeholder="e.g. LogisticsAsia, Credit, RealEstate">
+    <p class="hint">These become label:Theme-LogisticsAsia in Google Contacts</p>
+  </div>
+
+  <button class="generate-btn" onclick="generate()">Generate Notes & Labels</button>
+
+  <!-- OUTPUT -->
+  <div class="output-card" id="output-section">
+    <h2>Paste into Google Contacts → Notes</h2>
+    <div class="notes-output" id="notes-output"></div>
+    <button class="copy-btn" id="copy-btn" onclick="copyNotes()">Copy to clipboard</button>
+
+    <div class="labels-section">
+      <h3>Apply these labels in Google Contacts</h3>
+      <div class="label-chips" id="label-chips"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const TIER_HINTS = {
+    1: 'T1 Active — live deal or conversation. Touch every 1–2 weeks.',
+    2: 'T2 Priority — referrers, repeat contacts, target clients. Touch monthly.',
+    3: 'T3 Orbit — actively want to stay connected; future optionality. Quarterly.',
+    4: 'T4 Archive — searchable only, no proactive outreach.'
+  };
+
+  let selectedTier = 3;
+
+  // Init date to today
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const dd = String(today.getDate()).padStart(2, '0');
+  document.getElementById('date-met').value = `${yyyy}-${mm}-${dd}`;
+
+  // Load recent events from localStorage
+  function getRecentEvents() {
+    try { return JSON.parse(localStorage.getItem('crm_events') || '[]'); } catch { return []; }
+  }
+  function saveEvent(name) {
+    if (!name) return;
+    let events = getRecentEvents().filter(e => e !== name);
+    events.unshift(name);
+    events = events.slice(0, 8);
+    localStorage.setItem('crm_events', JSON.stringify(events));
+  }
+  function renderRecentEvents() {
+    const events = getRecentEvents();
+    const wrap = document.getElementById('recent-events-wrap');
+    const pills = document.getElementById('recent-event-pills');
+    const datalist = document.getElementById('event-suggestions');
+    if (events.length === 0) { wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+    pills.innerHTML = events.map(e =>
+      `<button class="recent-pill" onclick="useEvent('${e.replace(/'/g, "\\'")}')">${e}</button>`
+    ).join('');
+    datalist.innerHTML = events.map(e => `<option value="${e}">`).join('');
+  }
+  function useEvent(name) {
+    document.getElementById('event').value = name;
+  }
+  renderRecentEvents();
+
+  function selectTier(t) {
+    selectedTier = t;
+    document.querySelectorAll('.tier-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector(`.tier-btn[data-tier="${t}"]`).classList.add('active');
+    document.getElementById('tier-hint').textContent = TIER_HINTS[t];
+  }
+
+  function slugify(str) {
+    return str.trim()
+      .replace(/[^a-zA-Z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-');
+  }
+
+  function generate() {
+    const eventName   = document.getElementById('event').value.trim();
+    const dateMet     = document.getElementById('date-met').value || `${yyyy}-${mm}-${dd}`;
+    const introBy     = document.getElementById('intro-by').value.trim();
+    const whatTheyDo  = document.getElementById('what-they-do').value.trim();
+    const ask         = document.getElementById('ask').value.trim();
+    const nextAction  = document.getElementById('next-action').value.trim();
+    const nextDate    = document.getElementById('next-date').value;
+    const themesRaw   = document.getElementById('themes').value.trim();
+
+    if (!eventName) {
+      alert('Please enter the event name.');
+      document.getElementById('event').focus();
+      return;
+    }
+    if (!whatTheyDo) {
+      alert('Please enter what they do — this is the most important context field.');
+      document.getElementById('what-they-do').focus();
+      return;
+    }
+
+    // Build notes line 1
+    let contextParts = [];
+    if (eventName)  contextParts.push(eventName);
+    if (introBy)    contextParts.push(`intro'd by ${introBy}`);
+    if (whatTheyDo) contextParts.push(whatTheyDo);
+    if (ask)        contextParts.push(ask);
+    const line1 = `${dateMet} (met): ${contextParts.join(', ')}`;
+
+    // Build notes line 2 (todo, optional)
+    let notesText = line1;
+    if (nextAction) {
+      const byPart = nextDate ? ` by ${nextDate}` : '';
+      notesText += `\n${dateMet} (todo): ${nextAction}${byPart}`;
+    }
+
+    // Build labels
+    const eventYear = dateMet.slice(0, 4);
+    const eventSlug = slugify(eventName);
+    const labels = [];
+    if (selectedTier <= 3) labels.push({ text: `CRM-T${selectedTier}`, cls: `tier-t${selectedTier}` });
+    labels.push({ text: `Event-${eventSlug}`, cls: 'event' });
+    labels.push({ text: `Met-${eventYear}`, cls: 'year' });
+    const themes = themesRaw ? themesRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+    themes.forEach(t => labels.push({ text: `Theme-${slugify(t)}`, cls: 'event' }));
+
+    // Render
+    document.getElementById('notes-output').textContent = notesText;
+    const chipsEl = document.getElementById('label-chips');
+    chipsEl.innerHTML = labels.map(l =>
+      `<span class="chip ${l.cls}">${l.text}</span>`
+    ).join('');
+
+    const out = document.getElementById('output-section');
+    out.classList.add('visible');
+    out.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // Reset copy button
+    const copyBtn = document.getElementById('copy-btn');
+    copyBtn.textContent = 'Copy to clipboard';
+    copyBtn.classList.remove('copied');
+
+    // Save event to recent
+    saveEvent(eventName);
+    renderRecentEvents();
+  }
+
+  function copyNotes() {
+    const text = document.getElementById('notes-output').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('copy-btn');
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = 'Copy to clipboard';
+        btn.classList.remove('copied');
+      }, 2500);
+    }).catch(() => {
+      // Fallback for older mobile browsers
+      const el = document.createElement('textarea');
+      el.value = text;
+      el.style.position = 'fixed';
+      el.style.opacity = '0';
+      document.body.appendChild(el);
+      el.focus(); el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      const btn = document.getElementById('copy-btn');
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = 'Copy to clipboard';
+        btn.classList.remove('copied');
+      }, 2500);
+    });
+  }
+
+  // Allow Enter in single-line fields to jump to next
+  document.querySelectorAll('input').forEach(input => {
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const inputs = [...document.querySelectorAll('input, textarea')];
+        const idx = inputs.indexOf(input);
+        if (idx < inputs.length - 1) inputs[idx + 1].focus();
+      }
+    });
+  });
+</script>
+</body>
+</html>

@@ -70,8 +70,24 @@ export async function renderDetection(el) {
     }
   }
 
+  async function makeFullImageCard(dataUrl) {
+    const img = new Image();
+    img.src = dataUrl;
+    await new Promise(res => { img.onload = res; if (img.complete) res(); });
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    canvas.getContext('2d').drawImage(img, 0, 0);
+    const corners = [
+      { x: 0, y: 0 }, { x: img.naturalWidth - 1, y: 0 },
+      { x: img.naturalWidth - 1, y: img.naturalHeight - 1 }, { x: 0, y: img.naturalHeight - 1 },
+    ];
+    return { corners, cropCanvas: canvas, area: img.naturalWidth * img.naturalHeight };
+  }
+
   async function processPhoto(idx) {
     showStatus(`Detecting cards in photo ${idx + 1}…`, 20);
+    let opencvError = null;
     try {
       await loadOpenCV();
       showStatus(`Detecting cards in photo ${idx + 1}…`, 60);
@@ -82,19 +98,28 @@ export async function renderDetection(el) {
 
       const cards = await detectCards(tmpImg);
       photoCards[idx] = cards.map(c => ({ ...c, accepted: true }));
-      processingDone[idx] = true;
-      hideStatus();
 
       if (cards.length === 1 && cards[0].isFallback) {
         showToast('Card edges unclear — showing full image. Crop manually if needed.');
       }
     } catch (e) {
-      hideStatus();
       console.warn('Detection error:', e);
+      opencvError = e;
       photoCards[idx] = [];
-      processingDone[idx] = true;
-      showToast('Detection failed — add cards manually');
     }
+
+    // Universal fallback: if no cards (detection threw OR returned nothing),
+    // synthesize a full-image card so the user is never stranded.
+    if (photoCards[idx].length === 0) {
+      const fallback = await makeFullImageCard(app.pendingPhotos[idx].dataUrl);
+      photoCards[idx] = [{ ...fallback, accepted: true, isFallback: true }];
+      showToast(opencvError
+        ? 'Card detection unavailable — showing full image'
+        : 'No card edges found — showing full image');
+    }
+
+    processingDone[idx] = true;
+    hideStatus();
 
     renderOverlay(idx);
     renderCardList(idx);
