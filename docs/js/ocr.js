@@ -71,22 +71,38 @@ export function preprocessForOCR(srcCanvas) {
     const gray = new cv.Mat();
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
 
-    // CLAHE for contrast — gentle settings (clipLimit 1.5) so glossy cards
-    // with QR codes don't blow out into noise.
+    // Shadow normalisation: divide each pixel by a heavily-blurred version of
+    // itself. This removes uneven lighting (shadows cast by hands, gradient
+    // overhead light, the dark diagonal on a card tilted near a window) while
+    // preserving local contrast between ink and paper.
+    // kernel size must be odd and large enough to cover the shadow gradient.
+    const blurKSize = Math.round(w / 8) | 1; // ~1/8 of width, forced odd
+    const bg = new cv.Mat();
+    cv.GaussianBlur(gray, bg, new cv.Size(blurKSize, blurKSize), 0);
+    // normalized = gray * 128 / bg  (avoids integer overflow via float path)
+    const grayF = new cv.Mat(); gray.convertTo(grayF, cv.CV_32F);
+    const bgF   = new cv.Mat(); bg.convertTo(bgF,   cv.CV_32F);
+    const normF = new cv.Mat();
+    cv.divide(grayF, bgF, normF, 128);
+    const normalized = new cv.Mat();
+    normF.convertTo(normalized, cv.CV_8U);
+    bg.delete(); grayF.delete(); bgF.delete(); normF.delete();
+
+    // CLAHE for local contrast boost after shadow removal — gentle settings
+    // (clipLimit 1.5) so QR codes don't blow out into noise.
     const clahe = new cv.CLAHE(1.5, new cv.Size(8, 8));
     const equalized = new cv.Mat();
-    clahe.apply(gray, equalized);
+    clahe.apply(normalized, equalized);
 
-    // NOTE: previously we ran cv.adaptiveThreshold here. That destroyed
-    // subtle gray text (subtitles, light-color logos) and turned QR codes
-    // into noise that confused Tesseract. Tesseract's own internal Otsu
-    // step handles binarization better when given a clean grayscale image.
+    // NOTE: we do NOT run adaptiveThreshold here. It destroys subtle gray
+    // text and QR codes. Tesseract's internal Otsu binarization does better
+    // when given a clean, shadow-free grayscale image.
 
     const out = document.createElement('canvas');
     out.width = w; out.height = h;
     cv.imshow(out, equalized);
 
-    src.delete(); gray.delete(); clahe.delete(); equalized.delete();
+    src.delete(); gray.delete(); normalized.delete(); clahe.delete(); equalized.delete();
     return out;
   } catch (e) {
     console.warn('OCR preprocess failed, falling back to grayscale:', e);
@@ -152,7 +168,9 @@ export function parseFields(ocrResult) {
 }
 
 function extractEmails(text) {
-  return [...new Set((text.match(/[\w.+\-]+@[\w\-]+\.[a-z]{2,}/gi) || []))];
+  // Capture multi-part TLDs like .edu.sg, .com.my, .co.uk in addition to
+  // standard 2-6 char TLDs.
+  return [...new Set((text.match(/[\w.+\-]+@[\w\-.]+\.[a-z]{2,6}/gi) || []))];
 }
 
 function extractPhones(text, emails) {
@@ -231,33 +249,57 @@ const COMPANY_KEYWORDS = [
 ];
 
 function extractName(lines, words) {
-  // Prefer line with biggest avg word height (proxy for largest font) among short lines
-  if (words && words.length > 0) {
-    const candidates = lines.filter(l => {
-      const wc = l.split(/\s+/).length;
-      return wc >= 1 && wc <= 5 && !looksLikeKeywordLine(l);
-    });
-    if (candidates.length > 0) {
-      const scored = candidates.map(l => {
-        const lineWords = words.filter(w => l.includes(w.text) && w.conf > 40);
-        const avgH = lineWords.length
-          ? lineWords.reduce((s, w) => s + (w.bbox.y1 - w.bbox.y0), 0) / lineWords.length
-          : 0;
-        return { l, avgH };
-      });
-      scored.sort((a, b) => b.avgH - a.avgH);
-      if (scored[0].avgH > 0) return scored[0].l;
+  // Candidates: short lines (1–5 words) that don't look like a job title or
+  // company descriptor. We score each candidate and pick the highest scorer.
+  const candidates = lines.filter(l => {
+    // Names never contain digits — any digit is a sign this is a phone,
+    // address, reg number, or OCR noise bleeding in.
+    if (/\d/.test(l)) return false;
+    // Count only "real" tokens (len > 1) — single-letter OCR artifacts like
+    // a stray "Z" or "|" don't count as words.
+    const realWc = l.split(/\s+/).filter(t => t.length > 1).length;
+    return realWc >= 1 && realWc <= 5 && !looksLikeKeywordLine(l);
+  });
+  if (candidates.length === 0) return null;
+
+  function nameScore(line, idx) {
+    // Score using real word count (> 1 char) to ignore OCR-noise tokens.
+    const realWc = line.split(/\s+/).filter(t => t.length > 1).length;
+    let score = 0;
+
+    // Prefer multi-word lines — person names usually have 2–5 parts.
+    // Single-word lines are often company logos (ISKANDAR, NUS, IRDA).
+    if (realWc >= 2 && realWc <= 5) score += 10;
+    else if (realWc === 1) {
+      score -= 3;
+      // Tiebreaker for single-word candidates: company logos appear at the
+      // TOP of a card; names appear BELOW the logo. Give a small position
+      // bonus so a name like "KRISHNAMOORTHY" (index 1) beats the logo
+      // "ISKANDAR" (index 0) when both would otherwise score the same.
+      score += Math.min(3, idx * 0.5);
     }
+
+    // Boost by avg font height from Tesseract word bboxes (proxy for font size)
+    if (words && words.length > 0) {
+      const lineWords = words.filter(w => line.includes(w.text) && w.conf > 40);
+      if (lineWords.length > 0) {
+        const avgH = lineWords.reduce((s, w) => s + (w.bbox.y1 - w.bbox.y0), 0) / lineWords.length;
+        score += Math.min(8, avgH / 5);
+      }
+    }
+
+    // Lines that mix Latin + CJK with at least 2 CJK chars are very likely a
+    // bilingual name (e.g. "Belinda Tan Lai May 来美"). A single stray CJK
+    // glyph from OCR noise doesn't qualify.
+    const cjkChars = (line.match(/[\u4e00-\u9fff]/g) || []).length;
+    if (cjkChars >= 2 && /[A-Za-z]/.test(line)) score += 5;
+
+    return score;
   }
 
-  // Fallback: first non-empty short line
-  for (const line of lines) {
-    const words = line.split(/\s+/);
-    if (words.length >= 1 && words.length <= 5 && !looksLikeKeywordLine(line)) {
-      return line;
-    }
-  }
-  return null;
+  const scored = candidates.map((l, i) => ({ l, score: nameScore(l, lines.indexOf(l)) }));
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0].l;
 }
 
 function extractTitle(lines, name) {

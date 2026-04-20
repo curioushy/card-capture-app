@@ -47,7 +47,18 @@ export async function detectCards(imageElement) {
   const otsuCards   = detectViaOtsu(gray, minArea).map(c => ({ ...c, source: 'otsu' }));
   const adaptCards  = detectViaAdaptive(gray, minArea).map(c => ({ ...c, source: 'adaptive' }));
 
-  const merged = mergeByIoU([...cannyCards, ...otsuCards, ...adaptCards]);
+  let merged = mergeByIoU([...cannyCards, ...otsuCards, ...adaptCards]);
+
+  // Business cards in the same photo are all the same physical size, so their
+  // projected areas should be roughly similar. If one candidate is more than
+  // 4× larger than the median it's almost certainly the table surface or a
+  // background blob — drop it. This also catches the "adaptive threshold finds
+  // the entire image as one blob" failure mode.
+  if (merged.length > 1) {
+    const areas = merged.map(m => m.area).sort((a, b) => a - b);
+    const median = areas[Math.floor(areas.length / 2)];
+    merged = merged.filter(m => m.area <= median * 4 && m.area >= median / 4);
+  }
 
   // Scale corners back to full resolution and dewarp from the full-res source.
   const cards = merged.map(m => {
@@ -160,11 +171,15 @@ function extractCandidatesFromBinary(binary, minArea) {
   const hierarchy = new cv.Mat();
   cv.findContours(binary, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
+  // No single contour should cover more than 50% of the detection frame —
+  // anything that large is the table/background, not a card.
+  const maxArea = binary.cols * binary.rows * 0.5;
+
   const cards = [];
   for (let i = 0; i < contours.size(); i++) {
     const cnt = contours.get(i);
     const area = cv.contourArea(cnt);
-    if (area < minArea) { cnt.delete(); continue; }
+    if (area < minArea || area > maxArea) { cnt.delete(); continue; }
 
     const peri = cv.arcLength(cnt, true);
     const approx = new cv.Mat();
