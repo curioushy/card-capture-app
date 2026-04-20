@@ -109,26 +109,67 @@
   border-color: var(--accent);
 }
 
-/* Confirm card form */
-.confirm-card {
-  padding: 16px;
+/* ── Confirm three-layer layout ──────────────────────────────────────────── */
+.confirm-layout {
+  position: absolute;    /* fills the .screen regardless of its overflow-y */
+  inset: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  overflow: hidden;
 }
 
+.confirm-scroll {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.confirm-token-shelf {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.confirm-actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: 10px;
+  padding: 10px 16px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.confirm-actions .btn { flex: 1; }
+.confirm-actions .btn-primary { flex: 2; }
+
+/* ── Confirm card form ───────────────────────────────────────────────────── */
 .confirm-card-image {
   width: 100%;
   border-radius: var(--radius);
   overflow: hidden;
   background: #eee;
+  position: relative;
 }
 
 .confirm-card-image img {
   width: 100%;
   display: block;
-  max-height: 200px;
+  max-height: 160px;
   object-fit: contain;
+}
+
+.confirm-card-back .confirm-back-label {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  background: rgba(0,0,0,0.45);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  padding: 3px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .add-back-btn {
@@ -158,24 +199,29 @@
   font-weight: 600;
 }
 
-.progress-dots-row {
-  display: flex;
-  gap: 6px;
-}
+.progress-dots-row { display: flex; gap: 6px; }
 
 .progress-dot {
   width: 8px; height: 8px;
   border-radius: 50%;
   background: var(--border);
 }
-.progress-dot.done { background: var(--accent); }
+.progress-dot.done    { background: var(--accent); }
 .progress-dot.current { background: var(--accent); width: 20px; border-radius: 4px; }
 
+/* ── Field rows ──────────────────────────────────────────────────────────── */
 .confirm-fields {
   background: var(--surface);
   border-radius: var(--radius);
   overflow: hidden;
   border: 1px solid var(--border);
+  transition: border-color 0.15s;
+}
+
+/* When a drag is active, tell the user the fields are drop targets */
+.confirm-fields.drag-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(29,111,66,0.12);
 }
 
 .confirm-field-row {
@@ -183,9 +229,25 @@
   align-items: center;
   border-bottom: 1px solid var(--border);
   padding: 0 12px;
+  transition: background 0.1s;
 }
 
 .confirm-field-row:last-child { border-bottom: none; }
+
+/* Empty field — soft dashed hint inside */
+.confirm-field-row.field-empty .confirm-field-input::placeholder {
+  color: var(--border);
+  font-style: italic;
+}
+
+/* Field lit up under a dragged token */
+.confirm-field-row.drop-hover {
+  background: var(--accent-light);
+}
+
+.confirm-field-row.drop-hover .confirm-field-label {
+  color: var(--accent);
+}
 
 .confirm-field-label {
   font-size: 12px;
@@ -206,6 +268,99 @@
   font-family: var(--font);
   color: var(--text);
   background: transparent;
+}
+
+/* ── Token shelf ─────────────────────────────────────────────────────────── */
+.shelf-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 14px 5px;
+}
+
+.shelf-title {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.shelf-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.shelf-tokens {
+  display: flex;
+  gap: 7px;
+  padding: 4px 14px 10px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  flex-wrap: wrap;
+  max-height: 88px;     /* ~2 rows of tokens */
+  overflow-y: hidden;
+}
+.shelf-tokens::-webkit-scrollbar { display: none; }
+
+.ocr-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border);
+  background: var(--bg);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font);
+  color: var(--text);
+  white-space: nowrap;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: grab;
+  /* disable native touch behaviours so our drag works */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: opacity 0.15s, border-color 0.15s;
+}
+
+.ocr-token .tok-icon { font-size: 12px; }
+
+/* Pre-assigned (emails, phones already in fields) */
+.ocr-token.used {
+  opacity: 0.35;
+  border-style: dashed;
+}
+
+/* While being dragged */
+.ocr-token.token-dragging {
+  opacity: 0.25;
+}
+
+/* ── Ghost pill that follows the finger ──────────────────────────────────── */
+.drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  background: var(--accent);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font);
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.22);
+  transform: scale(1.06) rotate(-1.5deg);
+  transition: none;
 }
 
 /* Context section */
@@ -348,121 +503,7 @@
   font-family: var(--font);
 }
 
-/* ── OCR chip shelf ────────────────────────────────────────────────────────── */
-.chip-shelf {
-  background: var(--surface);
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  overflow: hidden;
-}
-
-.chip-shelf-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px 6px;
-  border-bottom: 1px solid var(--border);
-}
-
-.chip-shelf-title {
-  font-size: 11px;
-  font-weight: 800;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-}
-
-.chip-shelf-hint {
-  font-size: 11px;
-  color: var(--text-muted);
-  font-style: italic;
-}
-
-.chip-shelf-row {
-  display: flex;
-  gap: 7px;
-  padding: 10px 12px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-.chip-shelf-row::-webkit-scrollbar { display: none; }
-
-/* Individual OCR chips */
-.ocr-chip {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 5px 11px;
-  border-radius: 20px;
-  border: 1.5px solid var(--border);
-  background: var(--bg);
-  font-size: 13px;
-  font-weight: 500;
-  font-family: var(--font);
-  color: var(--text);
-  cursor: pointer;
-  white-space: nowrap;
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: border-color 0.15s, background 0.15s, opacity 0.15s;
-}
-
-.ocr-chip-icon { font-size: 12px; }
-
-.ocr-chip.used {
-  opacity: 0.4;
-  background: transparent;
-}
-
-.ocr-chip.selected {
-  border-color: var(--accent);
-  background: var(--accent-light);
-  color: var(--accent);
-  font-weight: 700;
-  box-shadow: 0 0 0 2px rgba(29,111,66,0.2);
-}
-
-.ocr-chip:active { opacity: 0.65; }
-
-/* Fields in assign mode — highlight the rows as tap targets */
-.confirm-fields.assign-mode {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(29,111,66,0.15);
-}
-
-.confirm-fields.assign-mode .confirm-field-row {
-  cursor: pointer;
-  background: rgba(29,111,66,0.04);
-}
-
-.confirm-fields.assign-mode .confirm-field-row:active {
-  background: var(--accent-light);
-}
-
-.confirm-fields.assign-mode .confirm-field-label::after {
-  content: ' ←';
-  color: var(--accent);
-  font-size: 10px;
-  font-weight: 600;
-}
-
-/* Back side label in confirm */
-.confirm-card-back { position: relative; }
-.confirm-back-label {
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  background: rgba(0,0,0,0.45);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  text-align: center;
-  padding: 4px 0;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
+/* (old tap-to-assign chip shelf removed — replaced by drag-and-drop token shelf) */
 
 /* Session summary */
 .summary-list {

@@ -11,18 +11,21 @@ export async function renderConfirm(el) {
   const cardData = app.detectedCards.map(() => null);
   let currentIdx = 0;
 
+  // Three-layer layout: scroll area | token shelf | action bar
   el.innerHTML = `
-    <div id="confirmInner" style="min-height:100%;display:flex;flex-direction:column;">
-      <div id="confirmCardArea" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div class="confirm-layout">
+      <div class="confirm-scroll" id="confirmScroll">
         <div style="text-align:center;padding:40px 16px;">
           <div class="spinner" style="margin:0 auto 12px;width:28px;height:28px;"></div>
           <p style="color:var(--text-muted);font-size:14px;">Running OCR on ${total} card${total > 1 ? 's' : ''}…</p>
         </div>
       </div>
+      <div class="confirm-token-shelf" id="tokenShelf" style="display:none"></div>
+      <div class="confirm-actions" id="confirmActions" style="display:none"></div>
     </div>
   `;
 
-  // ─── Run OCR on all cards ─────────────────────────────────────────────────
+  // ── OCR pass ────────────────────────────────────────────────────────────────
   try {
     await loadTesseract();
     for (let i = 0; i < total; i++) {
@@ -30,44 +33,26 @@ export async function renderConfirm(el) {
       showStatus(`Recognising card ${i + 1} of ${total}…`, Math.round(((i + 0.5) / total) * 100));
 
       let frontResult, backResult = null;
-
       if (card.backCanvas) {
-        // Single-card mode: OCR both sides in parallel
         [frontResult, backResult] = await Promise.all([
           runOCR(card.cropCanvas, () => {}),
-          runOCR(card.backCanvas, () => {}),
+          runOCR(card.backCanvas,  () => {}),
         ]);
       } else {
         frontResult = await runOCR(card.cropCanvas, () => {});
       }
 
       const parsed = parseFields(frontResult);
-
-      // Auto-merge back-side OCR (only fill empty fields, append arrays)
-      if (backResult) {
-        const backParsed = parseFields(backResult);
-        if (!parsed.name    && backParsed.name)    parsed.name    = backParsed.name;
-        if (!parsed.title   && backParsed.title)   parsed.title   = backParsed.title;
-        if (!parsed.company && backParsed.company) parsed.company = backParsed.company;
-        if (!parsed.linkedin && backParsed.linkedin) parsed.linkedin = backParsed.linkedin;
-        if (!parsed.website  && backParsed.website)  parsed.website  = backParsed.website;
-        backParsed.emails.forEach(e => { if (!parsed.emails.includes(e)) parsed.emails.push(e); });
-        backParsed.phones.forEach(p => { if (!parsed.phones.includes(p)) parsed.phones.push(p); });
-        parsed.raw_text_back = backResult.text;
-      }
+      if (backResult) mergeBack(parsed, parseFields(backResult));
 
       cardData[i] = {
         ...parsed,
-        tier: null,
-        intro_by: '',
-        next_action: '',
-        next_action_date: '',
+        tier: null, intro_by: '', next_action: '', next_action_date: '',
         card_image_front: card.cropCanvas.toDataURL('image/jpeg', 0.7),
         card_image_back:  card.backCanvas ? card.backCanvas.toDataURL('image/jpeg', 0.7) : '',
         ocr_raw_back:     backResult ? (backResult.text || '') : '',
         _skipped: false,
-        // Source atoms for chip shelf
-        _chips: buildChips(frontResult, backResult, parsed),
+        _tokens: buildTokens(frontResult, backResult, parsed),
       };
     }
   } catch (e) {
@@ -80,8 +65,8 @@ export async function renderConfirm(el) {
           linkedin: '', website: '', raw_text: '',
           tier: null, intro_by: '', next_action: '', next_action_date: '',
           card_image_front: card.cropCanvas.toDataURL('image/jpeg', 0.7),
-          card_image_back:  card.backCanvas ? card.backCanvas.toDataURL('image/jpeg', 0.7) : '',
-          ocr_raw_back: '', _skipped: false, _chips: [],
+          card_image_back: card.backCanvas ? card.backCanvas.toDataURL('image/jpeg', 0.7) : '',
+          ocr_raw_back: '', _skipped: false, _tokens: [],
         };
       }
     }
@@ -91,241 +76,276 @@ export async function renderConfirm(el) {
   hideStatus();
   renderCard(currentIdx);
 
-  // ─── Render a single card for review ─────────────────────────────────────
+  // ── Render one card ─────────────────────────────────────────────────────────
   function renderCard(idx) {
     currentIdx = idx;
-    const data = cardData[idx];
-    const area = el.querySelector('#confirmCardArea');
+    const data   = cardData[idx];
+    const scroll = el.querySelector('#confirmScroll');
+    const shelf  = el.querySelector('#tokenShelf');
+    const actions = el.querySelector('#confirmActions');
 
-    area.innerHTML = `
-      <!-- Card images -->
-      <div class="confirm-card-image">
-        <img src="${data.card_image_front}" alt="Card front">
-      </div>
+    // ── Scroll area ──────────────────────────────────────────────────────────
+    scroll.innerHTML = `
+      <div style="padding:16px;display:flex;flex-direction:column;gap:12px;">
 
-      ${data.card_image_back
-        ? `<div class="confirm-card-image confirm-card-back">
-             <img src="${data.card_image_back}" alt="Card back">
-             <div class="confirm-back-label">Back side</div>
-           </div>`
-        : `<button class="add-back-btn" id="addBackBtn">+ Add back side</button>`
-      }
-
-      <!-- Progress -->
-      <div class="progress-dots">
-        <span class="progress-dots-label">Card ${idx + 1} of ${total}</span>
-        <div class="progress-dots-row">
-          ${Array.from({ length: Math.min(total, 10) }, (_, i) =>
-            `<div class="progress-dot ${i < idx ? 'done' : i === idx ? 'current' : ''}"></div>`
-          ).join('')}
+        <div class="confirm-card-image">
+          <img src="${data.card_image_front}" alt="Card front">
         </div>
-      </div>
 
-      <!-- OCR chip shelf -->
-      ${renderChipShelf(data._chips || [])}
+        ${data.card_image_back
+          ? `<div class="confirm-card-image confirm-card-back">
+               <img src="${data.card_image_back}" alt="Card back">
+               <div class="confirm-back-label">Back side</div>
+             </div>`
+          : `<button class="add-back-btn" id="addBackBtn">+ Add back side</button>`
+        }
 
-      <!-- Fields -->
-      <div class="confirm-fields" id="confirmFields">
-        ${fieldRow('Name',     'name',     data.name)}
-        ${fieldRow('Title',    'title',    data.title)}
-        ${fieldRow('Company',  'company',  data.company)}
-        ${fieldRow('Email',    'email',    (data.emails || []).join(', '))}
-        ${fieldRow('Phone',    'phone',    (data.phones || []).join(', '))}
-        ${fieldRow('LinkedIn', 'linkedin', data.linkedin)}
-        ${fieldRow('Website',  'website',  data.website)}
-      </div>
+        <div class="progress-dots">
+          <span class="progress-dots-label">Card ${idx + 1} of ${total}</span>
+          <div class="progress-dots-row">
+            ${Array.from({ length: Math.min(total, 10) }, (_, i) =>
+              `<div class="progress-dot ${i < idx ? 'done' : i === idx ? 'current' : ''}"></div>`
+            ).join('')}
+          </div>
+        </div>
 
-      <!-- Context section -->
-      <div class="context-section">
-        <button class="context-toggle" id="contextToggle">
-          <span>▸ Add context</span>
-          <svg class="context-toggle-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-        </button>
-        <div class="context-body" id="contextBody">
-          <div class="form-group">
-            <label class="form-label">Tier</label>
-            <div class="tier-selector">
-              ${[1,2,3,4].map(t => `<button class="tier-btn t${t} ${data.tier === t ? 'active' : ''}" data-tier="${t}">T${t}</button>`).join('')}
+        <div class="confirm-fields" id="confirmFields">
+          ${fieldRow('Name',     'name',     data.name)}
+          ${fieldRow('Title',    'title',    data.title)}
+          ${fieldRow('Company',  'company',  data.company)}
+          ${fieldRow('Email',    'email',    (data.emails || []).join(', '))}
+          ${fieldRow('Phone',    'phone',    (data.phones || []).join(', '))}
+          ${fieldRow('LinkedIn', 'linkedin', data.linkedin)}
+          ${fieldRow('Website',  'website',  data.website)}
+        </div>
+
+        <div class="context-section">
+          <button class="context-toggle" id="contextToggle">
+            <span>▸ Add context</span>
+            <svg class="context-toggle-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="context-body" id="contextBody">
+            <div class="form-group">
+              <label class="form-label">Tier</label>
+              <div class="tier-selector">
+                ${[1,2,3,4].map(t =>
+                  `<button class="tier-btn t${t} ${data.tier === t ? 'active' : ''}" data-tier="${t}">T${t}</button>`
+                ).join('')}
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="introBy">Intro'd by</label>
+              <input class="form-input" id="introBy" value="${escHtml(data.intro_by || '')}" placeholder="Who introduced you?">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="nextAction">Next action</label>
+              <input class="form-input" id="nextAction" value="${escHtml(data.next_action || '')}" placeholder="e.g. Send deck, Schedule call">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="nextActionDate">By date</label>
+              <input class="form-input" id="nextActionDate" type="date" value="${data.next_action_date || ''}">
             </div>
           </div>
-          <div class="form-group">
-            <label class="form-label" for="introBy">Intro'd by</label>
-            <input class="form-input" id="introBy" value="${escHtml(data.intro_by || '')}" placeholder="Who introduced you?">
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="nextAction">Next action</label>
-            <input class="form-input" id="nextAction" value="${escHtml(data.next_action || '')}" placeholder="e.g. Send deck, Schedule call">
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="nextActionDate">By date</label>
-            <input class="form-input" id="nextActionDate" type="date" value="${data.next_action_date || ''}">
-          </div>
         </div>
-      </div>
 
-      <!-- Actions -->
-      <div style="display:flex;gap:10px;padding-top:4px;padding-bottom:8px;">
-        <button class="btn btn-secondary" id="skipBtn" style="flex:1;">Skip</button>
-        <button class="btn btn-primary" id="saveNextBtn" style="flex:2;">
-          ${idx === total - 1 ? 'Save & Done ✓' : 'Save & Next →'}
-        </button>
       </div>
     `;
 
-    // Context toggle
-    const toggle = area.querySelector('#contextToggle');
-    const body   = area.querySelector('#contextBody');
+    // ── Token shelf ──────────────────────────────────────────────────────────
+    shelf.style.display = '';
+    shelf.innerHTML = `
+      <div class="shelf-header">
+        <span class="shelf-title">FROM CARD</span>
+        <span class="shelf-hint" id="shelfHint">drag a token onto a field above</span>
+      </div>
+      <div class="shelf-tokens" id="shelfTokens">
+        ${(data._tokens || []).map((tok, i) => `
+          <div class="ocr-token ${tok.used ? 'used' : ''}"
+               data-idx="${i}"
+               data-text="${escAttr(tok.text)}"
+               style="touch-action:none;user-select:none;">
+            ${tok.icon ? `<span class="tok-icon">${tok.icon}</span>` : ''}${escHtml(tok.text)}
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    // ── Action bar ───────────────────────────────────────────────────────────
+    actions.style.display = '';
+    actions.innerHTML = `
+      <button class="btn btn-secondary" id="skipBtn">Skip</button>
+      <button class="btn btn-primary"   id="saveNextBtn">
+        ${idx === total - 1 ? 'Save & Done ✓' : 'Save & Next →'}
+      </button>
+    `;
+
+    // ── Wire up events ───────────────────────────────────────────────────────
+    const toggle = scroll.querySelector('#contextToggle');
+    const body   = scroll.querySelector('#contextBody');
     toggle.addEventListener('click', () => {
       const open = body.classList.toggle('open');
       toggle.classList.toggle('open', open);
       toggle.querySelector('span').textContent = open ? '▾ Add context' : '▸ Add context';
     });
 
-    // Tier buttons
-    area.querySelectorAll('.tier-btn').forEach(btn => {
+    scroll.querySelectorAll('.tier-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const t = Number(btn.dataset.tier);
         cardData[idx].tier = cardData[idx].tier === t ? null : t;
-        area.querySelectorAll('.tier-btn').forEach(b => b.classList.remove('active'));
+        scroll.querySelectorAll('.tier-btn').forEach(b => b.classList.remove('active'));
         if (cardData[idx].tier !== null) btn.classList.add('active');
       });
     });
 
-    // Add back side (only shown when no back side yet)
-    const addBackBtn = area.querySelector('#addBackBtn');
+    const addBackBtn = scroll.querySelector('#addBackBtn');
     if (addBackBtn) addBackBtn.addEventListener('click', () => triggerBackCapture(idx));
 
-    // Skip / Save
-    area.querySelector('#skipBtn').addEventListener('click', () => {
-      syncFieldsToData(idx);
-      cardData[idx]._skipped = true;
-      advance(idx);
+    actions.querySelector('#skipBtn').addEventListener('click', () => {
+      syncFields(idx); cardData[idx]._skipped = true; advance(idx);
     });
-    area.querySelector('#saveNextBtn').addEventListener('click', () => {
-      syncFieldsToData(idx);
-      advance(idx);
+    actions.querySelector('#saveNextBtn').addEventListener('click', () => {
+      syncFields(idx); advance(idx);
     });
 
-    // Swipe support
-    setupSwipe(area,
-      () => { syncFieldsToData(idx); cardData[idx]._skipped = true; advance(idx); },
-      () => { syncFieldsToData(idx); advance(idx); }
+    setupSwipe(scroll,
+      () => { syncFields(idx); cardData[idx]._skipped = true; advance(idx); },
+      () => { syncFields(idx); advance(idx); }
     );
 
-    // Wire up chip-shelf tap-to-assign
-    wireChipShelf(area, idx);
+    // ── Drag-and-drop ────────────────────────────────────────────────────────
+    initTokenDrag(el, shelf, scroll, idx);
   }
 
-  // ─── Chip shelf ────────────────────────────────────────────────────────────
-  function renderChipShelf(chips) {
-    if (!chips || chips.length === 0) return '';
-    return `
-      <div class="chip-shelf" id="chipShelf">
-        <div class="chip-shelf-header">
-          <span class="chip-shelf-title">FROM CARD</span>
-          <span class="chip-shelf-hint" id="chipHint">tap a chip to assign it to a field</span>
-        </div>
-        <div class="chip-shelf-row" id="chipRow">
-          ${chips.map((c, i) => `
-            <button class="ocr-chip ${c.used ? 'used' : ''}" data-chip-idx="${i}" data-chip-text="${escHtml(c.text)}">
-              ${c.icon ? `<span class="ocr-chip-icon">${c.icon}</span>` : ''}${escHtml(c.text)}
-            </button>
-          `).join('')}
-        </div>
-      </div>
-    `;
-  }
+  // ── Custom touch drag-and-drop ─────────────────────────────────────────────
+  function initTokenDrag(rootEl, shelfEl, scrollEl, idx) {
+    let ghost     = null;
+    let dragging  = null; // { tokenEl, text, tokenIdx }
+    let lastRow   = null;
 
-  function wireChipShelf(area, idx) {
-    const shelf = area.querySelector('#chipShelf');
-    if (!shelf) return;
-
-    const fieldsEl = area.querySelector('#confirmFields');
-    const hintEl   = area.querySelector('#chipHint');
-    let selectedChipIdx = null;
-    let selectedChipText = null;
-
-    area.querySelectorAll('.ocr-chip').forEach(chipBtn => {
-      chipBtn.addEventListener('click', e => {
-        e.stopPropagation();
-        const ci = Number(chipBtn.dataset.chipIdx);
-        if (selectedChipIdx === ci) {
-          // Deselect on second tap
-          clearSelection();
-          return;
-        }
-        // Select this chip
-        area.querySelectorAll('.ocr-chip').forEach(b => b.classList.remove('selected'));
-        chipBtn.classList.add('selected');
-        selectedChipIdx  = ci;
-        selectedChipText = chipBtn.dataset.chipText;
-        fieldsEl.classList.add('assign-mode');
-        hintEl.textContent = `← tap a field below to assign`;
-      });
+    shelfEl.querySelectorAll('.ocr-token').forEach(tok => {
+      tok.addEventListener('touchstart', onStart, { passive: false });
     });
 
-    // Tap a field row to assign
-    area.querySelectorAll('.confirm-field-row').forEach(row => {
-      row.addEventListener('click', e => {
-        if (selectedChipText === null) return;
+    function onStart(e) {
+      if (e.touches.length !== 1) return;
+      e.preventDefault(); // prevent scroll hijack on token
+      const touch = e.touches[0];
+      const tok   = e.currentTarget;
+
+      dragging = {
+        tokenEl:   tok,
+        text:      tok.dataset.text,
+        tokenIdx:  Number(tok.dataset.idx),
+      };
+
+      // Ghost pill that follows the finger
+      ghost = document.createElement('div');
+      ghost.className = 'drag-ghost';
+      ghost.textContent = dragging.text;
+      positionGhost(touch.clientX, touch.clientY);
+      document.body.appendChild(ghost);
+
+      tok.classList.add('token-dragging');
+      scrollEl.querySelector('#confirmFields')?.classList.add('drag-active');
+
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('touchend',  onEnd);
+      document.addEventListener('touchcancel', onEnd);
+    }
+
+    function onMove(e) {
+      if (!ghost) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      positionGhost(touch.clientX, touch.clientY);
+
+      // Highlight the field row under the finger
+      const target = fieldRowAt(touch.clientX, touch.clientY);
+      if (target !== lastRow) {
+        lastRow?.classList.remove('drop-hover');
+        target?.classList.add('drop-hover');
+        lastRow = target;
+      }
+    }
+
+    function onEnd(e) {
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend',  onEnd);
+      document.removeEventListener('touchcancel', onEnd);
+
+      if (!ghost || !dragging) return;
+
+      const touch = e.changedTouches[0];
+      const row   = fieldRowAt(touch.clientX, touch.clientY);
+
+      if (row) {
         const key   = row.dataset.key;
         const input = row.querySelector('.confirm-field-input');
-        if (!input) return;
-
-        // Multi-value fields: append; single-value: replace
-        if (key === 'email' || key === 'phone') {
-          const cur = input.value.trim();
-          input.value = cur ? `${cur}, ${selectedChipText}` : selectedChipText;
-        } else {
-          input.value = selectedChipText;
+        if (input) {
+          if (key === 'email' || key === 'phone') {
+            const cur = input.value.trim();
+            input.value = cur ? `${cur}, ${dragging.text}` : dragging.text;
+          } else {
+            input.value = dragging.text;
+          }
+          // Mark token as used
+          if (cardData[idx]._tokens[dragging.tokenIdx]) {
+            cardData[idx]._tokens[dragging.tokenIdx].used = true;
+          }
+          dragging.tokenEl.classList.add('used');
         }
+      }
 
-        // Mark chip as used
-        if (cardData[idx]._chips && cardData[idx]._chips[selectedChipIdx]) {
-          cardData[idx]._chips[selectedChipIdx].used = true;
-        }
-        const chipBtn = area.querySelector(`.ocr-chip[data-chip-idx="${selectedChipIdx}"]`);
-        if (chipBtn) chipBtn.classList.add('used');
+      cleanup();
+    }
 
-        clearSelection();
-        e.preventDefault();
-        e.stopPropagation();
-      });
-    });
+    function cleanup() {
+      ghost?.remove();
+      ghost = null;
+      lastRow?.classList.remove('drop-hover');
+      lastRow = null;
+      dragging?.tokenEl.classList.remove('token-dragging');
+      dragging = null;
+      scrollEl.querySelector('#confirmFields')?.classList.remove('drag-active');
+    }
 
-    // Tap anywhere else to deselect
-    area.addEventListener('click', () => clearSelection(), { capture: false });
+    function positionGhost(cx, cy) {
+      // Centre horizontally on finger, sit above it
+      const w = Math.min(ghost.offsetWidth || 160, 220);
+      ghost.style.left = `${cx - w / 2}px`;
+      ghost.style.top  = `${cy - 44}px`;
+    }
 
-    function clearSelection() {
-      area.querySelectorAll('.ocr-chip').forEach(b => b.classList.remove('selected'));
-      fieldsEl.classList.remove('assign-mode');
-      hintEl.textContent = 'tap a chip to assign it to a field';
-      selectedChipIdx = null;
-      selectedChipText = null;
+    // Walk up from elementFromPoint to find a .confirm-field-row
+    function fieldRowAt(cx, cy) {
+      const el = document.elementFromPoint(cx, cy);
+      return el?.closest?.('.confirm-field-row') ?? null;
     }
   }
 
-  // ─── Field helpers ────────────────────────────────────────────────────────
+  // ── Field helpers ───────────────────────────────────────────────────────────
   function fieldRow(label, key, value) {
+    const empty = !value || value === '';
     return `
-      <div class="confirm-field-row" data-key="${key}">
+      <div class="confirm-field-row ${empty ? 'field-empty' : ''}" data-key="${key}">
         <span class="confirm-field-label">${label}</span>
-        <input class="confirm-field-input" data-key="${key}" value="${escHtml(value || '')}" placeholder="${label}">
+        <input class="confirm-field-input" data-key="${key}"
+               value="${escHtml(value || '')}" placeholder="drag a token or type…">
       </div>`;
   }
 
-  function syncFieldsToData(idx) {
-    const area = el.querySelector('#confirmCardArea');
-    area.querySelectorAll('.confirm-field-input').forEach(input => {
+  function syncFields(idx) {
+    const scroll = el.querySelector('#confirmScroll');
+    scroll.querySelectorAll('.confirm-field-input').forEach(input => {
       const key = input.dataset.key;
       const val = input.value.trim();
-      if (key === 'email') cardData[idx].emails = val ? val.split(/[,;]\s*/) : [];
+      if      (key === 'email') cardData[idx].emails = val ? val.split(/[,;]\s*/) : [];
       else if (key === 'phone') cardData[idx].phones = val ? val.split(/[,;]\s*/) : [];
-      else cardData[idx][key] = val;
+      else                      cardData[idx][key]   = val;
     });
-    const introBy        = area.querySelector('#introBy');
-    const nextAction     = area.querySelector('#nextAction');
-    const nextActionDate = area.querySelector('#nextActionDate');
+    const introBy        = scroll.querySelector('#introBy');
+    const nextAction     = scroll.querySelector('#nextAction');
+    const nextActionDate = scroll.querySelector('#nextActionDate');
     if (introBy)        cardData[idx].intro_by        = introBy.value.trim();
     if (nextAction)     cardData[idx].next_action      = nextAction.value.trim();
     if (nextActionDate) cardData[idx].next_action_date = nextActionDate.value;
@@ -336,7 +356,7 @@ export async function renderConfirm(el) {
     else await saveAll();
   }
 
-  // ─── Save all ─────────────────────────────────────────────────────────────
+  // ── Save ─────────────────────────────────────────────────────────────────
   async function saveAll() {
     if (!app.currentSession) { showToast('No active session'); navigate('home'); return; }
     showStatus('Saving contacts…', 50);
@@ -345,78 +365,67 @@ export async function renderConfirm(el) {
       if (data._skipped) continue;
       try {
         const contact = await createContact({
-          session_id:       app.currentSession.id,
-          name:             data.name,
-          title:            data.title,
-          company:          data.company,
-          emails:           data.emails || [],
-          phones:           data.phones || [],
-          linkedin:         data.linkedin || '',
-          website:          data.website || '',
-          tier:             data.tier,
-          intro_by:         data.intro_by || '',
-          next_action:      data.next_action || '',
+          session_id: app.currentSession.id,
+          name: data.name, title: data.title, company: data.company,
+          emails: data.emails || [], phones: data.phones || [],
+          linkedin: data.linkedin || '', website: data.website || '',
+          tier: data.tier,
+          intro_by: data.intro_by || '', next_action: data.next_action || '',
           next_action_date: data.next_action_date || '',
-          ocr_raw_front:    data.raw_text || '',
-          ocr_raw_back:     data.ocr_raw_back || '',
+          ocr_raw_front: data.raw_text || '', ocr_raw_back: data.ocr_raw_back || '',
           card_image_front: data.card_image_front || '',
-          card_image_back:  data.card_image_back || '',
+          card_image_back:  data.card_image_back  || '',
         });
         saved.push(contact);
-      } catch (e) {
-        console.warn('Failed to save contact:', e);
-      }
+      } catch (e) { console.warn('Failed to save contact:', e); }
     }
     hideStatus();
     terminateWorker();
     renderSummary(saved);
   }
 
-  // ─── Session summary ──────────────────────────────────────────────────────
+  // ── Summary ───────────────────────────────────────────────────────────────
   function renderSummary(saved) {
-    el.querySelector('#confirmInner').innerHTML = `
-      <div style="padding:24px 16px;">
-        <div style="text-align:center;margin-bottom:24px;">
-          <div style="font-size:48px;margin-bottom:8px;">✓</div>
-          <h2 style="font-size:22px;font-weight:800;">${saved.length} contact${saved.length === 1 ? '' : 's'} saved</h2>
-          <p style="color:var(--text-muted);font-size:14px;margin-top:4px;">${app.currentSession?.event_name || ''}</p>
-        </div>
-        <div class="summary-list">
-          ${saved.map(c => `
-            <div class="summary-row">
-              <div class="summary-row-left">
-                <div class="summary-row-name">${escHtml(c.name || '(no name)')}</div>
-                <div class="summary-row-company">${escHtml(c.company || '')}</div>
+    el.innerHTML = `
+      <div class="confirm-layout">
+        <div class="confirm-scroll" style="padding:24px 16px;">
+          <div style="text-align:center;margin-bottom:24px;">
+            <div style="font-size:48px;margin-bottom:8px;">✓</div>
+            <h2 style="font-size:22px;font-weight:800;">${saved.length} contact${saved.length === 1 ? '' : 's'} saved</h2>
+            <p style="color:var(--text-muted);font-size:14px;margin-top:4px;">${app.currentSession?.event_name || ''}</p>
+          </div>
+          <div class="summary-list">
+            ${saved.map(c => `
+              <div class="summary-row">
+                <div class="summary-row-left">
+                  <div class="summary-row-name">${escHtml(c.name || '(no name)')}</div>
+                  <div class="summary-row-company">${escHtml(c.company || '')}</div>
+                </div>
+                ${c.tier ? `<span class="tier-chip t${c.tier}">T${c.tier}</span>` : ''}
               </div>
-              ${c.tier ? `<span class="tier-chip t${c.tier}">T${c.tier}</span>` : ''}
-            </div>
-          `).join('')}
+            `).join('')}
+          </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:10px;margin-top:24px;">
-          <button class="btn btn-secondary btn-full" id="addMoreBtn">+ Add more photos</button>
-          <button class="btn btn-primary btn-full" id="closeSessionBtn">Close session</button>
+        <div class="confirm-actions" style="display:flex;">
+          <button class="btn btn-secondary" id="addMoreBtn" style="flex:1;">+ More photos</button>
+          <button class="btn btn-primary"   id="closeSessionBtn" style="flex:2;">Close session</button>
         </div>
       </div>
     `;
     el.querySelector('#addMoreBtn').addEventListener('click', () => {
-      app.pendingPhotos = [];
-      app.detectedCards = [];
-      navigate('capture');
+      app.pendingPhotos = []; app.detectedCards = []; navigate('capture');
     });
     el.querySelector('#closeSessionBtn').addEventListener('click', async () => {
       if (app.currentSession) await updateSession(app.currentSession.id, { is_open: false });
-      app.currentSession  = null;
-      app.pendingPhotos   = [];
-      app.detectedCards   = [];
+      app.currentSession = null; app.pendingPhotos = []; app.detectedCards = [];
       navigate('home');
     });
   }
 
-  // ─── Add back side (post-OCR, from confirm screen) ───────────────────────
+  // ── Add back side (post-OCR) ──────────────────────────────────────────────
   async function triggerBackCapture(idx) {
     const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
+    input.type = 'file'; input.accept = 'image/*';
     input.onchange = async () => {
       if (!input.files[0]) return;
       showStatus('Processing back side…', 40);
@@ -425,24 +434,14 @@ export async function renderConfirm(el) {
       try {
         const ocrResult = await runOCR(tmpCanvas, () => {});
         const parsed    = parseFields(ocrResult);
-        const d = cardData[idx];
-        if (!d.name    && parsed.name)    d.name    = parsed.name;
-        if (!d.title   && parsed.title)   d.title   = parsed.title;
-        if (!d.company && parsed.company) d.company = parsed.company;
-        if (!d.linkedin && parsed.linkedin) d.linkedin = parsed.linkedin;
-        if (!d.website  && parsed.website)  d.website  = parsed.website;
-        parsed.emails.forEach(e => { if (!d.emails.includes(e)) d.emails.push(e); });
-        parsed.phones.forEach(p => { if (!d.phones.includes(p)) d.phones.push(p); });
-        // Add back-side lines to chip shelf
-        const backChips = buildChipsFromText(ocrResult.text, parsed);
-        d._chips = [...(d._chips || []), ...backChips.filter(bc =>
-          !(d._chips || []).some(ec => ec.text === bc.text)
-        )];
-        d.card_image_back = dataUrl;
-        d.ocr_raw_back    = ocrResult.text;
-      } catch {
+        mergeBack(cardData[idx], parsed);
+        // Append new tokens to shelf
+        const newToks = buildTokensFromText(ocrResult.text, parsed);
+        const existingTexts = new Set((cardData[idx]._tokens || []).map(t => t.text.toLowerCase()));
+        newToks.forEach(t => { if (!existingTexts.has(t.text.toLowerCase())) cardData[idx]._tokens.push(t); });
         cardData[idx].card_image_back = dataUrl;
-      }
+        cardData[idx].ocr_raw_back    = ocrResult.text;
+      } catch { cardData[idx].card_image_back = dataUrl; }
       hideStatus();
       renderCard(idx);
     };
@@ -450,57 +449,63 @@ export async function renderConfirm(el) {
   }
 }
 
-// ─── Chip building ─────────────────────────────────────────────────────────
+// ── Token building ─────────────────────────────────────────────────────────
 
-function buildChips(frontResult, backResult, parsed) {
-  const allText = [
-    frontResult?.text || '',
-    backResult?.text  || '',
-  ].join('\n');
-  return buildChipsFromText(allText, parsed);
+function buildTokens(frontResult, backResult, parsed) {
+  const allText = (frontResult?.text || '') + '\n' + (backResult?.text || '');
+  return buildTokensFromText(allText, parsed);
 }
 
-function buildChipsFromText(rawText, parsed) {
-  const usedTexts = new Set([
-    parsed.name, parsed.title, parsed.company, parsed.linkedin, parsed.website,
-    ...(parsed.emails || []), ...(parsed.phones || []),
-  ].filter(Boolean).map(s => s.toLowerCase()));
+function buildTokensFromText(rawText, parsed) {
+  const tokens = [];
+  const seen   = new Set();
 
-  const chips = [];
-  const seen  = new Set();
-
-  // Typed atoms first (emails, phones, URLs)
-  (parsed.emails || []).forEach(t => addChip(t, '✉', true));
-  (parsed.phones || []).forEach(t => addChip(t, '📞', true));
-  if (parsed.linkedin) addChip(parsed.linkedin, '🔗', true);
-  if (parsed.website)  addChip(parsed.website,  '🌐', true);
-
-  // Remaining lines from raw OCR
-  const lines = rawText.split('\n')
-    .map(l => l.replace(/^\|\s*/, '').trim())  // strip leading pipe artefact
-    .filter(l => l.length >= 3 && l.length <= 80);
-
-  for (const line of lines) {
-    const norm = line.toLowerCase();
-    // Skip if already a typed-atom chip
-    if ([...usedTexts].some(u => u && norm.includes(u.toLowerCase().slice(0, 10)))) {
-      addChip(line, '', true);
-    } else {
-      addChip(line, '', false);
-    }
-  }
-
-  return chips;
-
-  function addChip(text, icon, used) {
+  function add(text, icon, used) {
     const key = text.toLowerCase().trim();
-    if (!key || seen.has(key)) return;
+    if (!key || key.length < 2 || seen.has(key)) return;
     seen.add(key);
-    chips.push({ text: text.trim(), icon, used });
+    tokens.push({ text: text.trim(), icon, used });
   }
+
+  // Typed atoms first — shown as pre-used since they're already in fields
+  (parsed.emails  || []).forEach(t => add(t, '✉', true));
+  (parsed.phones  || []).forEach(t => add(t, '📞', true));
+  if (parsed.linkedin) add(parsed.linkedin, '🔗', true);
+  if (parsed.website)  add(parsed.website,  '🌐', true);
+
+  // Remaining OCR lines — the ones the parser may have missed
+  const usedLower = new Set([
+    parsed.name, parsed.title, parsed.company,
+    ...(parsed.emails || []), ...(parsed.phones || []),
+    parsed.linkedin, parsed.website,
+  ].filter(Boolean).map(s => s.toLowerCase().trim()));
+
+  rawText.split('\n')
+    .map(l => l.replace(/^\|\s*/, '').trim())
+    .filter(l => l.length >= 3 && l.length <= 80)
+    .forEach(line => {
+      const norm = line.toLowerCase().trim();
+      // Mark as used if the parser already picked it up
+      const isUsed = [...usedLower].some(u => u && (norm === u || norm.includes(u) || u.includes(norm)));
+      add(line, '', isUsed);
+    });
+
+  return tokens;
 }
 
-// ─── Misc helpers ──────────────────────────────────────────────────────────
+// ── Back-side merge ────────────────────────────────────────────────────────
+
+function mergeBack(target, src) {
+  if (!target.name    && src.name)    target.name    = src.name;
+  if (!target.title   && src.title)   target.title   = src.title;
+  if (!target.company && src.company) target.company = src.company;
+  if (!target.linkedin && src.linkedin) target.linkedin = src.linkedin;
+  if (!target.website  && src.website)  target.website  = src.website;
+  (src.emails || []).forEach(e => { if (!(target.emails || []).includes(e)) (target.emails = target.emails || []).push(e); });
+  (src.phones || []).forEach(p => { if (!(target.phones || []).includes(p)) (target.phones = target.phones || []).push(p); });
+}
+
+// ── Misc helpers ────────────────────────────────────────────────────────────
 
 function setupSwipe(el, onLeft, onRight) {
   let startX = null;
@@ -529,4 +534,8 @@ function dataUrlToCanvas(dataUrl) {
 
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function escAttr(s) {
+  return String(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
