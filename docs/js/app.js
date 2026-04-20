@@ -16,6 +16,8 @@ export const app = {
   pendingPhotos: [],
   detectedCards: [],
   confirmedCards: [],
+  captureMode: 'batch',  // 'batch' | 'single'
+  singleCards: [],       // [{ frontDataUrl, backDataUrl|null }]
 };
 
 // Screen registry

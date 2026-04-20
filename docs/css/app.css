@@ -204,19 +204,28 @@ html, body {
 .nav-btn-capture {
   position: relative;
   color: var(--accent);
-  padding-top: 4px;
+  padding-top: 0;
+  /* Elevate the circle above the nav bar so it reads as the primary action */
+  margin-top: -22px;
+  font-weight: 600;
 }
 
 .capture-btn-circle {
-  width: 44px; height: 44px;
+  width: 56px; height: 56px;
   background: var(--accent);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
-  box-shadow: 0 2px 8px rgba(29, 111, 66, 0.4);
+  box-shadow: 0 4px 12px rgba(29, 111, 66, 0.45), 0 0 0 4px var(--surface);
   flex-shrink: 0;
+  margin-bottom: 2px;
+  transition: transform 0.15s;
+}
+
+.nav-btn-capture:active .capture-btn-circle {
+  transform: scale(0.94);
 }
 
 /* Utility classes */

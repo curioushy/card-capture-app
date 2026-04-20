@@ -348,6 +348,122 @@
   font-family: var(--font);
 }
 
+/* ── OCR chip shelf ────────────────────────────────────────────────────────── */
+.chip-shelf {
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.chip-shelf-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.chip-shelf-title {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.chip-shelf-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.chip-shelf-row {
+  display: flex;
+  gap: 7px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.chip-shelf-row::-webkit-scrollbar { display: none; }
+
+/* Individual OCR chips */
+.ocr-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 11px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border);
+  background: var(--bg);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color 0.15s, background 0.15s, opacity 0.15s;
+}
+
+.ocr-chip-icon { font-size: 12px; }
+
+.ocr-chip.used {
+  opacity: 0.4;
+  background: transparent;
+}
+
+.ocr-chip.selected {
+  border-color: var(--accent);
+  background: var(--accent-light);
+  color: var(--accent);
+  font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(29,111,66,0.2);
+}
+
+.ocr-chip:active { opacity: 0.65; }
+
+/* Fields in assign mode — highlight the rows as tap targets */
+.confirm-fields.assign-mode {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(29,111,66,0.15);
+}
+
+.confirm-fields.assign-mode .confirm-field-row {
+  cursor: pointer;
+  background: rgba(29,111,66,0.04);
+}
+
+.confirm-fields.assign-mode .confirm-field-row:active {
+  background: var(--accent-light);
+}
+
+.confirm-fields.assign-mode .confirm-field-label::after {
+  content: ' ←';
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* Back side label in confirm */
+.confirm-card-back { position: relative; }
+.confirm-back-label {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  background: rgba(0,0,0,0.45);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  padding: 4px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 /* Session summary */
 .summary-list {
   padding: 0 16px;
