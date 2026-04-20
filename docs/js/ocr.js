@@ -1,4 +1,26 @@
 // Tesseract.js wrapper + field parser
+//
+// Worker strategy (mobile-first):
+//   - Single worker, reused across all cards in a session.
+//   - Sequential PSM 6 → PSM 11 on the same worker (halves RAM vs two parallel
+//     workers, critical on mid-range Android with 4 GB shared with OS).
+//   - Language defaults to 'eng' (~10 MB model). 'chi_sim' (~20 MB) is opt-in
+//     via Settings and stored in localStorage key 'cc-lang'.
+//   - jsDelivr CDN is more reliable than unpkg for global mobile users.
+
+// ─── Language helper ──────────────────────────────────────────────────────────
+
+export function getOCRLang() {
+  return localStorage.getItem('cc-lang') || 'eng';
+}
+
+export function setOCRLang(lang) {
+  localStorage.setItem('cc-lang', lang);
+  // Terminate any existing worker so next session picks up new language
+  terminateWorkers();
+}
+
+// ─── Tesseract script loader ──────────────────────────────────────────────────
 
 let tesseractLoadPromise = null;
 
@@ -7,7 +29,8 @@ export function loadTesseract() {
   tesseractLoadPromise = new Promise((resolve, reject) => {
     if (window.Tesseract) { resolve(); return; }
     const script = document.createElement('script');
-    script.src = 'https://unpkg.com/tesseract.js@5/dist/tesseract.min.js';
+    // jsDelivr is more reliable than unpkg for mobile users globally
+    script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
     script.onload = resolve;
     script.onerror = () => reject(new Error('Tesseract failed to load'));
     document.head.appendChild(script);
@@ -15,42 +38,72 @@ export function loadTesseract() {
   return tesseractLoadPromise;
 }
 
-// Build a Tesseract worker for a specific PSM. We run two workers in parallel
-// (PSM 6 + PSM 11) and merge the best text from each per-field — modern
-// business cards are a mix of compact blocks (address paragraph → PSM 6) and
-// scattered layout (name top-left, contact bottom-right → PSM 11).
+// ─── Worker management ────────────────────────────────────────────────────────
+
+// One worker per language string — reused across all cards in a session.
 const workers = {};
 
-async function getWorker(psm = '6') {
-  if (workers[psm]) return workers[psm];
+function _updateLoadingUI(msg) {
+  // Direct DOM update avoids importing from app.js (circular dep).
+  // The status bar elements are always present in the HTML shell.
+  const bar    = document.getElementById('statusBar');
+  const textEl = document.getElementById('statusBarText');
+  if (bar && textEl) { bar.hidden = false; textEl.textContent = msg; }
+}
+
+async function getWorker(lang) {
+  if (workers[lang]) return workers[lang];
   await loadTesseract();
-  const w = await Tesseract.createWorker('eng+chi_sim');
-  await w.setParameters({ tessedit_pageseg_mode: psm });
-  workers[psm] = w;
+
+  const w = await Tesseract.createWorker(lang, 1, {
+    // Show model-download progress in the status bar.
+    // Language models are cached in the browser after first download
+    // (Tesseract.js uses IndexedDB), so this only appears on first use.
+    logger: m => {
+      if (m.status === 'loading tesseract core') {
+        _updateLoadingUI('Loading OCR engine…');
+      } else if (m.status === 'loading language traineddata') {
+        const pct = Math.round((m.progress || 0) * 100);
+        const hint = lang.includes('chi_sim') ? ' (~30 MB, first time only)' : ' (~10 MB, first time only)';
+        _updateLoadingUI(`Downloading language model… ${pct}%${pct < 5 ? hint : ''}`);
+      } else if (m.status === 'initialized api') {
+        _updateLoadingUI('OCR ready');
+      }
+    },
+  });
+  workers[lang] = w;
   return w;
 }
 
+// ─── OCR entry point ──────────────────────────────────────────────────────────
+
 export async function runOCR(canvas, onProgress) {
   const prepped = preprocessForOCR(canvas);
+  const lang = getOCRLang();
+  const w = await getWorker(lang);
 
-  // Dual-PSM pass: PSM 6 (single block) and PSM 11 (sparse text). PSM 11 is
-  // the mode actually designed for business cards ("find as much text as
-  // possible in no particular order") but it loses some dense-block text.
-  // We run both and merge.
-  const [w6, w11] = await Promise.all([getWorker('6'), getWorker('11')]);
-  const [r6, r11] = await Promise.all([
-    w6.recognize(prepped, {}, { blocks: false, hocr: false, tsv: false, text: true }),
-    w11.recognize(prepped, {}, { blocks: false, hocr: false, tsv: false, text: true }),
-  ]);
+  // Sequential PSM 6 → PSM 11 on the same worker.
+  // PSM 6 (single uniform block) handles cards with clean grid layouts.
+  // PSM 11 (sparse text) recovers scattered contact details that PSM 6 misses.
+  // Sequential rather than parallel = half the RAM, ~same total time.
 
+  await w.setParameters({ tessedit_pageseg_mode: '6' });
+  const r6 = await w.recognize(prepped, {}, {
+    blocks: false, hocr: false, tsv: false, text: true, words: true,
+  });
+  if (onProgress) onProgress(55);
+
+  await w.setParameters({ tessedit_pageseg_mode: '11' });
+  const r11 = await w.recognize(prepped, {}, {
+    blocks: false, hocr: false, tsv: false, text: true,
+  });
   if (onProgress) onProgress(100);
 
-  // Return both texts concatenated (parser dedupes). Words come from PSM 6
-  // (more reliable bboxes for font-size heuristic).
   return {
-    text: (r6.data.text || '') + '\n' + (r11.data.text || ''),
-    text_psm6: r6.data.text || '',
+    text:      (r6.data.text || '') + '\n' + (r11.data.text || ''),
+    text_psm6:  r6.data.text  || '',
     text_psm11: r11.data.text || '',
+    // Word bboxes from PSM 6 — more reliable for font-size heuristics
     words: (r6.data.words || []).map(wrd => ({
       text: wrd.text,
       bbox: wrd.bbox,
@@ -226,16 +279,14 @@ function canvasGrayscaleFallback(canvas) {
 }
 
 export async function terminateWorkers() {
-  for (const psm of Object.keys(workers)) {
-    try { await workers[psm].terminate(); } catch {}
-    delete workers[psm];
+  for (const lang of Object.keys(workers)) {
+    try { await workers[lang].terminate(); } catch {}
+    delete workers[lang];
   }
 }
 
 // Legacy alias — retained so existing imports keep working.
-export async function terminateWorker() {
-  await terminateWorkers();
-}
+export { terminateWorkers as terminateWorker };
 
 
 // ─── Field Parser ────────────────────────────────────────────────────────────

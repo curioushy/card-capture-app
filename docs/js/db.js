@@ -249,22 +249,43 @@ export async function clearAll() {
 }
 
 // Image compression helper
-export function compressImage(blob, maxDim = 800, quality = 0.7) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    const url = URL.createObjectURL(blob);
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      let w = img.naturalWidth, h = img.naturalHeight;
-      if (w > maxDim || h > maxDim) {
-        if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
-        else { w = Math.round(w * maxDim / h); h = maxDim; }
-      }
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      URL.revokeObjectURL(url);
-      resolve(canvas.toDataURL('image/jpeg', quality));
-    };
-    img.src = url;
-  });
+// Uses createImageBitmap({ imageOrientation: 'from-image' }) as the primary path
+// so that Android Chrome respects the EXIF rotation flag embedded in camera
+// photos. Without this, portrait photos are drawn sideways to canvas and
+// card detection + OCR both fail on Android.
+// Falls back to the Image element path for older Safari which doesn't support
+// the imageOrientation option but handles EXIF rotation natively.
+export async function compressImage(blob, maxDim = 800, quality = 0.7) {
+  function scaledCanvas(w, h) {
+    if (w > maxDim || h > maxDim) {
+      if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+      else        { w = Math.round(w * maxDim / h); h = maxDim; }
+    }
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    return c;
+  }
+
+  // Primary: createImageBitmap — respects EXIF on Chrome/Firefox
+  try {
+    const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+    const c = scaledCanvas(bmp.width, bmp.height);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    bmp.close();
+    return c.toDataURL('image/jpeg', quality);
+  } catch {
+    // Fallback: Image element — Safari handles EXIF natively in this path
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(blob);
+      img.onload = () => {
+        const c = scaledCanvas(img.naturalWidth, img.naturalHeight);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        resolve(c.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')); };
+      img.src = url;
+    });
+  }
 }

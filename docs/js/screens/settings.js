@@ -2,6 +2,7 @@ import { navigate, showToast, getTheme, setTheme } from '../app.js';
 import { getMeta, listContacts, listSessions, deleteSession, clearAll } from '../db.js';
 import { exportJSON, exportCSV, exportVCard } from '../export.js';
 import { importFile, importJSON } from '../import.js';
+import { getOCRLang, setOCRLang } from '../ocr.js';
 
 export async function renderSettings(el) {
   el.innerHTML = `<div id="settingsInner" style="padding-bottom:24px;"></div>`;
@@ -114,6 +115,36 @@ export async function renderSettings(el) {
         </div>
       </div>
 
+      <!-- OCR Language -->
+      <div class="section-title">OCR Language</div>
+      <div class="settings-list">
+        <div class="settings-row" style="cursor:default;gap:12px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:0;">
+            <div class="settings-row-label">Recognition language</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">
+              English only is faster and uses ~10 MB. Add Chinese if you scan
+              cards with Simplified Chinese text (~30 MB extra on first use).
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0;" id="langSelector">
+            <button class="lang-btn ${getOCRLang()==='eng'?'active':''}" data-lang="eng"
+              style="padding:7px 12px;border-radius:var(--radius-sm);border:2px solid ${getOCRLang()==='eng'?'var(--accent)':'var(--border)'};
+              background:${getOCRLang()==='eng'?'var(--accent-light)':'var(--surface)'};
+              color:${getOCRLang()==='eng'?'var(--accent)':'var(--text-muted)'};
+              font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);">
+              English
+            </button>
+            <button class="lang-btn ${getOCRLang()==='eng+chi_sim'?'active':''}" data-lang="eng+chi_sim"
+              style="padding:7px 12px;border-radius:var(--radius-sm);border:2px solid ${getOCRLang()==='eng+chi_sim'?'var(--accent)':'var(--border)'};
+              background:${getOCRLang()==='eng+chi_sim'?'var(--accent-light)':'var(--surface)'};
+              color:${getOCRLang()==='eng+chi_sim'?'var(--accent)':'var(--text-muted)'};
+              font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);">
+              EN + 中文
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Appearance -->
       <div class="section-title">Appearance</div>
       <div class="settings-list" style="margin:0 16px;">
@@ -195,6 +226,22 @@ export async function renderSettings(el) {
 
     // Clear all
     el.querySelector('#clearAllBtn').addEventListener('click', () => showClearAllModal());
+
+    // OCR Language
+    el.querySelector('#langSelector').addEventListener('click', e => {
+      const btn = e.target.closest('.lang-btn');
+      if (!btn) return;
+      setOCRLang(btn.dataset.lang);
+      el.querySelectorAll('.lang-btn').forEach(b => {
+        const active = b.dataset.lang === btn.dataset.lang;
+        b.style.borderColor = active ? 'var(--accent)' : 'var(--border)';
+        b.style.background  = active ? 'var(--accent-light)' : 'var(--surface)';
+        b.style.color       = active ? 'var(--accent)' : 'var(--text-muted)';
+      });
+      showToast(btn.dataset.lang === 'eng+chi_sim'
+        ? 'Chinese enabled — will download ~30 MB on next scan'
+        : 'English only — faster and lighter');
+    });
 
     // Theme
     el.querySelector('#themeSelector').addEventListener('click', e => {
