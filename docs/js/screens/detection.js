@@ -70,6 +70,17 @@ export async function renderDetection(el) {
     }
   }
 
+  // Confidence = number of detection strategies that agreed on this card's
+  // bounding box. Shown as a small badge so the user knows which crops to
+  // double-check (esp. confidence 1, which is "only one algorithm saw this").
+  function confidenceBadge(card) {
+    if (card.isFallback) return { label: '○ Manual crop needed', color: '#e67e22' };
+    const c = card.confidence || 1;
+    if (c >= 3) return { label: '●●● High confidence', color: '#1d6f42' };
+    if (c === 2) return { label: '●●○ Medium confidence', color: '#888' };
+    return { label: '●○○ Low — please verify', color: '#e67e22' };
+  }
+
   async function makeFullImageCard(dataUrl) {
     const img = new Image();
     img.src = dataUrl;
@@ -86,11 +97,11 @@ export async function renderDetection(el) {
   }
 
   async function processPhoto(idx) {
-    showStatus(`Detecting cards in photo ${idx + 1}…`, 20);
+    showStatus(`Photo ${idx + 1}: loading recognition engine…`, 15);
     let opencvError = null;
     try {
       await loadOpenCV();
-      showStatus(`Detecting cards in photo ${idx + 1}…`, 60);
+      showStatus(`Photo ${idx + 1}: scanning card edges…`, 55);
 
       const tmpImg = new Image();
       tmpImg.src = app.pendingPhotos[idx].dataUrl;
@@ -100,7 +111,12 @@ export async function renderDetection(el) {
       photoCards[idx] = cards.map(c => ({ ...c, accepted: true }));
 
       if (cards.length === 1 && cards[0].isFallback) {
-        showToast('Card edges unclear — showing full image. Crop manually if needed.');
+        showToast('Couldn\'t auto-detect — draw around each card manually');
+      } else {
+        const lowConf = cards.filter(c => (c.confidence || 0) < 2).length;
+        if (lowConf > 0) {
+          showToast(`Detected ${cards.length} card${cards.length === 1 ? '' : 's'} — ${lowConf} low confidence, please verify`);
+        }
       }
     } catch (e) {
       console.warn('Detection error:', e);
@@ -167,16 +183,22 @@ export async function renderDetection(el) {
       return;
     }
 
-    cardList.innerHTML = cards.map((card, i) => `
+    cardList.innerHTML = cards.map((card, i) => {
+      const conf = confidenceBadge(card);
+      return `
       <div class="detection-card-item ${card.accepted ? 'accepted' : 'rejected'}" data-index="${i}">
         <canvas class="detection-card-thumb" id="thumb-${i}"></canvas>
-        <span class="detection-card-num">Card ${i + 1}${card.isFallback ? ' (full image)' : ''}</span>
+        <div style="display:flex;flex-direction:column;gap:2px;flex:1;">
+          <span class="detection-card-num">Card ${i + 1}${card.isFallback ? ' (full image)' : ''}</span>
+          <span style="font-size:11px;color:${conf.color};font-weight:600;">${conf.label}</span>
+        </div>
         <div class="detection-toggle-btns">
           <button class="${card.accepted ? 'accept' : ''}" data-action="accept" data-index="${i}">✓</button>
           <button class="${!card.accepted ? 'reject' : ''}" data-action="reject" data-index="${i}">✕</button>
         </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     // Draw thumbnails
     cards.forEach((card, i) => {
