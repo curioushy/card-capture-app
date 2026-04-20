@@ -187,7 +187,36 @@ def dewarp(img, corners):
 
 # ─── OCR preprocess & run ──────────────────────────────────────────────────
 
+def deskew(img_bgr):
+    """Detect dominant text-line angle and counter-rotate. +10% OCR typ."""
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    kW = max(15, img_bgr.shape[1] // 30)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kW, 3))
+    dilated = cv2.dilate(binary, kernel)
+    contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    min_bar_area = img_bgr.shape[0] * img_bgr.shape[1] * 0.002
+    angles = []
+    for cnt in contours:
+        if cv2.contourArea(cnt) < min_bar_area: continue
+        rect = cv2.minAreaRect(cnt)
+        (_, _), (rw, rh), ang = rect
+        if rw < rh: ang += 90
+        if ang > 45: ang -= 90
+        if ang < -45: ang += 90
+        if abs(ang) <= 15:
+            angles.append(ang)
+    if not angles: return img_bgr
+    median_angle = sorted(angles)[len(angles)//2]
+    if abs(median_angle) < 0.5: return img_bgr
+    h, w = img_bgr.shape[:2]
+    M = cv2.getRotationMatrix2D((w//2, h//2), median_angle, 1.0)
+    return cv2.warpAffine(img_bgr, M, (w, h), flags=cv2.INTER_CUBIC,
+                          borderMode=cv2.BORDER_REPLICATE)
+
+
 def preprocess_for_ocr(img_bgr):
+    img_bgr = deskew(img_bgr)
     TARGET = 1500
     h, w = img_bgr.shape[:2]
     longest = max(w, h)
@@ -196,8 +225,7 @@ def preprocess_for_ocr(img_bgr):
         img_bgr = cv2.resize(img_bgr, (int(w*scale), int(h*scale)), interpolation=cv2.INTER_CUBIC)
     h2, w2 = img_bgr.shape[:2]
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-    # Shadow normalisation: divide by heavily-blurred background
-    k = int(w2 / 8) | 1  # odd kernel ~1/8 width
+    k = int(w2 / 8) | 1
     bg = cv2.GaussianBlur(gray, (k, k), 0)
     grayF = gray.astype(np.float32)
     bgF   = bg.astype(np.float32)
@@ -255,6 +283,12 @@ def extract_phones(text, emails):
     for line in text.split('\n'):
         if re.search(r'\d{6,}\s*\(\s*[\w-]+\s*\)', line):
             continue
+        # Clean intra-digit punctuation noise (apostrophes, backticks, colons between digits)
+        line = re.sub(r"(\d)['`:](\d)", r'\1\2', line)
+        # Normalize trailing layout markers like " | T Pp"
+        line = re.sub(r'\s*\|\s*[a-zA-Z]{1,3}(\s+[a-zA-Z]{1,2})?\s*\|?\s*$', '', line)
+        # OCR confusion: leading 4/T/F/H/#/$ before a phone-shaped digit run → +
+        line = re.sub(r'(^|[\s(])[4TFH#$](\d{2,3})', r'\1+\2', line)
         for m in re.findall(r'(\+?[\d][\d\s\-().]{6,18}[\d])', line):
             cleaned = m.strip()
             digits = re.sub(r'\D', '', cleaned)

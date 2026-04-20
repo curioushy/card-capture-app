@@ -1,6 +1,5 @@
 // Tesseract.js wrapper + field parser
 
-let worker = null;
 let tesseractLoadPromise = null;
 
 export function loadTesseract() {
@@ -16,28 +15,43 @@ export function loadTesseract() {
   return tesseractLoadPromise;
 }
 
-async function getWorker() {
-  if (worker) return worker;
+// Build a Tesseract worker for a specific PSM. We run two workers in parallel
+// (PSM 6 + PSM 11) and merge the best text from each per-field — modern
+// business cards are a mix of compact blocks (address paragraph → PSM 6) and
+// scattered layout (name top-left, contact bottom-right → PSM 11).
+const workers = {};
+
+async function getWorker(psm = '6') {
+  if (workers[psm]) return workers[psm];
   await loadTesseract();
-  worker = await Tesseract.createWorker('eng+chi_sim');
-  // PSM 6: assume single uniform block of text. Much better than the default
-  // auto-segmentation (PSM 3) for compact business cards.
-  await worker.setParameters({ tessedit_pageseg_mode: '6' });
-  return worker;
+  const w = await Tesseract.createWorker('eng+chi_sim');
+  await w.setParameters({ tessedit_pageseg_mode: psm });
+  workers[psm] = w;
+  return w;
 }
 
 export async function runOCR(canvas, onProgress) {
-  const w = await getWorker();
   const prepped = preprocessForOCR(canvas);
-  const result = await w.recognize(prepped, {}, {
-    blocks: false, hocr: false, tsv: false, text: true,
-  });
+
+  // Dual-PSM pass: PSM 6 (single block) and PSM 11 (sparse text). PSM 11 is
+  // the mode actually designed for business cards ("find as much text as
+  // possible in no particular order") but it loses some dense-block text.
+  // We run both and merge.
+  const [w6, w11] = await Promise.all([getWorker('6'), getWorker('11')]);
+  const [r6, r11] = await Promise.all([
+    w6.recognize(prepped, {}, { blocks: false, hocr: false, tsv: false, text: true }),
+    w11.recognize(prepped, {}, { blocks: false, hocr: false, tsv: false, text: true }),
+  ]);
 
   if (onProgress) onProgress(100);
 
+  // Return both texts concatenated (parser dedupes). Words come from PSM 6
+  // (more reliable bboxes for font-size heuristic).
   return {
-    text: result.data.text || '',
-    words: (result.data.words || []).map(wrd => ({
+    text: (r6.data.text || '') + '\n' + (r11.data.text || ''),
+    text_psm6: r6.data.text || '',
+    text_psm11: r11.data.text || '',
+    words: (r6.data.words || []).map(wrd => ({
       text: wrd.text,
       bbox: wrd.bbox,
       conf: wrd.confidence,
@@ -45,24 +59,30 @@ export async function runOCR(canvas, onProgress) {
   };
 }
 
-// Boost OCR accuracy: upscale to ~300 DPI equivalent, grayscale, contrast
-// stretch, adaptive threshold (binarize). Falls back to plain grayscale if
-// OpenCV isn't available.
+// Boost OCR accuracy: deskew, upscale to ~300 DPI equivalent, shadow-normalise,
+// local contrast boost (CLAHE). Falls back to plain grayscale if OpenCV isn't
+// available. Research shows deskew alone can give +10% OCR accuracy.
 export function preprocessForOCR(srcCanvas) {
-  // Target longest side ≈ 1500px (business card at ~300 DPI)
-  const TARGET = 1500;
-  const longest = Math.max(srcCanvas.width, srcCanvas.height);
-  const scale = longest < TARGET ? TARGET / longest : 1;
-  const w = Math.round(srcCanvas.width * scale);
-  const h = Math.round(srcCanvas.height * scale);
+  // Step 1: Deskew the crop before anything else. Business cards photographed
+  // on a tabletop often have residual tilt (camera not perfectly overhead,
+  // imperfect corner detection during dewarp). Tesseract doesn't auto-rotate
+  // below ~2° and text baselines tilting by even 3-5° confuse its segmentation.
+  const deskewed = deskewCanvas(srcCanvas);
 
-  // Upscale via canvas (bilinear)
+  // Step 2: Upscale bilinear to a 1500px floor — OCR benefits from ≥300 DPI,
+  // and many crops from far-away cards come in under 1000px.
+  const TARGET = 1500;
+  const longest = Math.max(deskewed.width, deskewed.height);
+  const scale = longest < TARGET ? TARGET / longest : 1;
+  const w = Math.round(deskewed.width * scale);
+  const h = Math.round(deskewed.height * scale);
+
   const upscaled = document.createElement('canvas');
   upscaled.width = w; upscaled.height = h;
   const uctx = upscaled.getContext('2d');
   uctx.imageSmoothingEnabled = true;
   uctx.imageSmoothingQuality = 'high';
-  uctx.drawImage(srcCanvas, 0, 0, w, h);
+  uctx.drawImage(deskewed, 0, 0, w, h);
 
   if (!window.cv || !cv.Mat) return canvasGrayscaleFallback(upscaled);
 
@@ -110,6 +130,87 @@ export function preprocessForOCR(srcCanvas) {
   }
 }
 
+// Deskew: detect the dominant text angle and counter-rotate so baselines are
+// horizontal. We binarise the card, dilate horizontally to turn text lines
+// into bars, run minAreaRect over each bar, and take the median angle.
+// This is much more robust than Hough lines for noisy card backgrounds.
+export function deskewCanvas(srcCanvas) {
+  if (!window.cv || !cv.Mat) return srcCanvas;
+  try {
+    const src = cv.imread(srcCanvas);
+    const gray = new cv.Mat();
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+    // Invert-Otsu so text is white on black (needed for contour finding).
+    const binary = new cv.Mat();
+    cv.threshold(gray, binary, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU);
+
+    // Dilate horizontally — turn each text line into one solid bar. The bar's
+    // minAreaRect angle gives the baseline tilt.
+    const kW = Math.max(15, Math.round(srcCanvas.width / 30));
+    const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(kW, 3));
+    const dilated = new cv.Mat();
+    cv.dilate(binary, dilated, kernel);
+
+    const contours = new cv.MatVector();
+    const hierarchy = new cv.Mat();
+    cv.findContours(dilated, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+    const angles = [];
+    const minBarArea = (srcCanvas.width * srcCanvas.height) * 0.002;
+    for (let i = 0; i < contours.size(); i++) {
+      const cnt = contours.get(i);
+      const area = cv.contourArea(cnt);
+      if (area < minBarArea) { cnt.delete(); continue; }
+
+      const rect = cv.minAreaRect(cnt);
+      const { width: rw, height: rh } = rect.size;
+      // OpenCV returns angle in [-90, 0]. Normalise so horizontal bars report
+      // an angle near 0 regardless of width vs height orientation.
+      let angle = rect.angle;
+      if (rw < rh) angle += 90;
+      // Clip to near-horizontal candidates only — drop vertical decorations.
+      if (angle > 45) angle -= 90;
+      if (angle < -45) angle += 90;
+      if (Math.abs(angle) <= 15) angles.push(angle);
+      cnt.delete();
+    }
+
+    let medianAngle = 0;
+    if (angles.length > 0) {
+      angles.sort((a, b) => a - b);
+      medianAngle = angles[Math.floor(angles.length / 2)];
+    }
+
+    // Skip the rotate if tilt is trivial — avoids unnecessary interpolation blur.
+    if (Math.abs(medianAngle) < 0.5) {
+      src.delete(); gray.delete(); binary.delete(); dilated.delete();
+      kernel.delete(); contours.delete(); hierarchy.delete();
+      return srcCanvas;
+    }
+
+    const center = new cv.Point(src.cols / 2, src.rows / 2);
+    const M = cv.getRotationMatrix2D(center, medianAngle, 1);
+    const rotated = new cv.Mat();
+    cv.warpAffine(
+      src, rotated, M, new cv.Size(src.cols, src.rows),
+      cv.INTER_CUBIC, cv.BORDER_REPLICATE
+    );
+
+    const out = document.createElement('canvas');
+    out.width = src.cols; out.height = src.rows;
+    cv.imshow(out, rotated);
+
+    src.delete(); gray.delete(); binary.delete(); dilated.delete();
+    kernel.delete(); contours.delete(); hierarchy.delete();
+    M.delete(); rotated.delete();
+    return out;
+  } catch (e) {
+    console.warn('Deskew failed, continuing with original crop:', e);
+    return srcCanvas;
+  }
+}
+
 function canvasGrayscaleFallback(canvas) {
   const ctx = canvas.getContext('2d');
   const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -124,17 +225,46 @@ function canvasGrayscaleFallback(canvas) {
   return canvas;
 }
 
-export async function terminateWorker() {
-  if (worker) {
-    await worker.terminate();
-    worker = null;
+export async function terminateWorkers() {
+  for (const psm of Object.keys(workers)) {
+    try { await workers[psm].terminate(); } catch {}
+    delete workers[psm];
   }
 }
 
+// Legacy alias — retained so existing imports keep working.
+export async function terminateWorker() {
+  await terminateWorkers();
+}
+
+
 // ─── Field Parser ────────────────────────────────────────────────────────────
 
+// Strip common business-card design artifacts from OCR text. Modern cards
+// often have single-letter markers like "| E" / "| T" / "| F" next to email/
+// telephone/fax fields — these are decorative labels, not data. Tesseract
+// reads them as part of the adjacent line.
+function scrubLayoutMarkers(text) {
+  return text.split('\n').map(line => {
+    let l = line;
+    // Trailing pipe + 1-2 letters: "krishna@...com |E|" or "+60... | T"
+    l = l.replace(/\s*\|\s*[a-zA-Z]{1,2}\s*\|?\s*$/g, '');
+    // Orphan single letter at end — run twice so "VICE PRESIDENT fF" → "VICE PRESIDENT"
+    // (most OCR tail-noise is 1-2 stray chars from decorative stripes / logos).
+    // Risk: strips legitimate initial like "John A" — acceptable since business
+    // cards almost always use periods: "John A.", which has a period we don't match.
+    l = l.replace(/\s+[a-zA-Z]\s*$/, '');
+    l = l.replace(/\s+[a-zA-Z]\s*$/, '');
+    // Leading punctuation garbage: "Vv", ": " etc.
+    l = l.replace(/^[:;,.\s]+/, '');
+    return l;
+  }).join('\n');
+}
+
 export function parseFields(ocrResult) {
-  const { text, words } = ocrResult;
+  const { words } = ocrResult;
+  const rawText = ocrResult.text;
+  const text = scrubLayoutMarkers(rawText);
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
 
   const emails = extractEmails(text);
@@ -175,30 +305,41 @@ function extractEmails(text) {
 
 function extractPhones(text, emails) {
   const emailStr = emails.join(' ');
-  // Look at line-by-line context so we can reject company registration numbers
-  // that typically appear in patterns like "BERHAD 200601032342 (752101-D)".
+  // Work per-line so we can reject company reg numbers (pattern: digits +
+  // parenthesised code) and restore the "+" that OCR often misreads.
   const lines = text.split('\n');
   const found = [];
 
-  for (const line of lines) {
-    // Skip lines that look like a company registration: digits followed by
-    // parentheses with another id ("(752101-D)").
-    if (/\d{6,}\s*\(\s*[\w-]+\s*\)/.test(line)) continue;
+  for (let rawLine of lines) {
+    // Skip company registration lines: "200601032342 (752101-D)"
+    if (/\d{6,}\s*\(\s*[\w-]+\s*\)/.test(rawLine)) continue;
 
-    const matches = line.match(/(\+?[\d][\d\s\-().]{6,18}[\d])/g) || [];
+    // OCR "+ confusion": Tesseract regularly misreads the "+" glyph as "4",
+    // "T", "F", "#" or "$". Whenever one of these appears immediately before
+    // a phone-shaped digit run (e.g. "46012'2096693" → "+6012 209 8693"),
+    // normalise it to "+" before parsing.
+    let line = rawLine;
+    // Only substitute when the char is followed by a plausible country-code
+    // digit run (3+ digits) — avoids mangling legitimate text like "4 pages".
+    line = line.replace(/(^|[\s(])[4TFH#$](\d{2,3})/g, '$1+$2');
+
+    const matches = line.match(/(\+?[\d][\d\s\-().'']{6,20}[\d])/g) || [];
     for (const m of matches) {
-      const cleaned = m.trim();
+      // Strip layout-marker tails: "+60... | T" or "... | E"
+      let cleaned = m.replace(/\s*\|\s*[a-zA-Z]+\s*\|?\s*$/, '').trim();
+      // Strip stray punctuation that OCR injects (apostrophes, colons)
+      cleaned = cleaned.replace(/['`:]/g, ' ').replace(/\s+/g, ' ').trim();
       const digits = cleaned.replace(/\D/g, '');
 
       if (digits.length < 7 || digits.length > 15) continue;
       if (emailStr.includes(cleaned)) continue;
 
-      // Reject pure digit blobs ≥10 digits with no spaces / dashes / plus —
-      // these are almost always reg numbers, not phones.
+      // Reject pure digit blobs ≥10 chars with no separators — these are
+      // almost always registration numbers, not phones.
       if (digits.length >= 10 && !/[\s\-+()]/.test(cleaned)) continue;
 
-      // Phones almost always have a + or a country/area code structure.
-      // Accept if: starts with +, OR contains a space/dash separator.
+      // Require + prefix OR a separator — phones have structure, reg numbers
+      // are solid digit strings.
       if (!cleaned.startsWith('+') && !/[\s\-]/.test(cleaned)) continue;
 
       found.push(cleaned);
