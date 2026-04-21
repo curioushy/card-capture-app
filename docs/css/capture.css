@@ -269,7 +269,256 @@
   justify-content: center;
 }
 
-/* Detection screen */
+/* ── Detection screen — new layout ──────────────────────────────────────────
+ *
+ *  .det-wrap
+ *    .det-photo-nav       (only when > 1 photo)
+ *    .det-img-wrap        photo + overlay canvas
+ *    .det-carousel        card viewer / loading / empty states
+ *    .det-footer          manual + confirm buttons
+ */
+
+.det-wrap {
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  min-height: 100%;
+}
+
+/* ── Photo nav ─────────────────────────────────────────────────────────────── */
+.det-photo-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: #111;
+  border-bottom: 1px solid #222;
+}
+
+.det-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ccc;
+}
+
+.det-nav-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 10px;
+  opacity: 0.75;
+  font-family: var(--font);
+}
+.det-nav-btn:disabled { opacity: 0.2; cursor: default; }
+
+/* ── Photo + overlay ───────────────────────────────────────────────────────── */
+.det-img-wrap {
+  position: relative;
+  flex-shrink: 0;
+  background: #000;
+  /* Limit photo to ~40% of viewport so there's room for the carousel */
+  max-height: 42vh;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.det-img {
+  width: 100%;
+  display: block;
+  max-height: 42vh;
+  object-fit: contain;
+}
+
+.det-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  /* CSS 100%/100% scales the canvas pixel space to exactly match the img.
+     canvas.width/height are set to naturalWidth/Height, so drawing coords
+     are 1:1 with the image — no getBoundingClientRect needed. */
+  width: 100%; height: 100%;
+  pointer-events: none;
+}
+
+/* ── Carousel ──────────────────────────────────────────────────────────────── */
+.det-carousel {
+  flex: 1;
+  background: #111;
+  display: flex;
+  flex-direction: column;
+  min-height: 200px;
+  border-top: 1px solid #222;
+}
+
+.det-loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #888;
+  font-size: 13px;
+  padding: 24px;
+}
+
+/* Spinner on dark background */
+.det-spinner {
+  border-color: #333 !important;
+  border-top-color: var(--accent) !important;
+  width: 26px !important;
+  height: 26px !important;
+}
+
+.det-card-viewer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 4px;
+}
+
+/* Arrow nav row */
+.det-card-nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px 4px;
+  border-bottom: 1px solid #1e1e1e;
+}
+
+.det-card-arrow {
+  background: none;
+  border: 1px solid #333;
+  color: #ccc;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 14px;
+  border-radius: 6px;
+  font-family: var(--font);
+}
+.det-card-arrow:disabled { opacity: 0.2; cursor: default; }
+.det-card-arrow:active:not(:disabled) { background: #222; }
+
+/* Crop preview */
+.det-crop-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px 6px;
+  /* Touch target for swipe */
+  touch-action: pan-y;
+  overflow: hidden;
+  min-height: 90px;
+}
+
+.det-crop-canvas {
+  max-width: 100%;
+  max-height: 160px;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+  display: block;
+}
+
+/* Confidence badge */
+.det-conf-badge {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 16px 6px;
+  min-height: 20px;
+  letter-spacing: 0.2px;
+}
+
+/* Include / Skip buttons */
+.det-card-btns {
+  display: flex;
+  gap: 8px;
+  padding: 6px 16px 10px;
+}
+
+.det-skip-btn {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid #333;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: #666;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.det-skip-btn.active {
+  border-color: #c0392b;
+  color: #e74c3c;
+  background: rgba(231,76,60,0.08);
+}
+
+.det-include-btn {
+  flex: 2;
+  padding: 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: #333;
+  color: #666;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.det-include-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Empty / no-cards state */
+.det-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #555;
+  font-size: 14px;
+  padding: 24px;
+  text-align: center;
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────────── */
+.det-footer {
+  background: #111;
+  border-top: 1px solid #222;
+  padding: 10px 16px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.det-manual-btn {
+  background: transparent;
+  border: 1px solid #333;
+  color: #aaa;
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  text-align: center;
+}
+.det-manual-btn:active { background: #1a1a1a; }
+
+/* ── Legacy detection classes (kept for backwards compatibility) ─────────── */
 .detection-container {
   position: relative;
   background: #000;
