@@ -174,9 +174,9 @@ export async function renderSettings(el) {
           <span class="settings-row-label">Cache version</span>
           <span class="settings-row-value">${swVersion}</span>
         </div>
-        <div class="settings-row" id="checkUpdateBtn">
-          <span class="settings-row-label">Check for updates</span>
-          <span class="settings-row-arrow">›</span>
+        <div class="settings-row" id="checkUpdateBtn" style="background:var(--accent-light);">
+          <span class="settings-row-label" style="color:var(--accent);font-weight:700;">Force update (clear cache)</span>
+          <span class="settings-row-arrow" style="color:var(--accent);">›</span>
         </div>
         <div class="settings-row" style="cursor:default;">
           <span class="settings-row-label">Schema version</span>
@@ -263,20 +263,27 @@ export async function renderSettings(el) {
       window.open('https://github.com/curioushy/card-capture-app', '_blank');
     });
 
-    // Check for updates
+    // Force update — unregisters all SWs, clears all caches, hard-reloads.
+    // This is the nuclear option for when the SW is stuck on an old version.
     el.querySelector('#checkUpdateBtn')?.addEventListener('click', async () => {
-      showToast('Checking for updates…');
+      showToast('Clearing cache…');
       try {
-        const reg = await navigator.serviceWorker?.getRegistration();
-        if (!reg) { showToast('No service worker registered'); return; }
-        await reg.update();
-        // Force reload after a brief moment so the new SW activates
-        setTimeout(() => {
-          showToast('Reloading to apply update…');
-          setTimeout(() => location.reload(), 600);
-        }, 800);
+        // 1. Unregister every SW for this origin
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map(r => r.unregister()));
+        }
+        // 2. Delete every cache entry
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map(k => caches.delete(k)));
+        }
+        showToast('Done — reloading…');
+        // Hard reload bypasses any remaining HTTP cache
+        setTimeout(() => window.location.reload(true), 700);
       } catch (e) {
-        showToast(`Update check failed: ${e.message}`);
+        showToast('Error: ' + e.message);
+        setTimeout(() => window.location.reload(true), 1000);
       }
     });
   }
