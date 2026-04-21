@@ -7,7 +7,7 @@ export async function renderConfirm(el) {
     navigate('capture'); return;
   }
 
-  const total = app.detectedCards.length;
+  const total    = app.detectedCards.length;
   const cardData = app.detectedCards.map(() => null);
   let currentIdx = 0;
 
@@ -25,7 +25,7 @@ export async function renderConfirm(el) {
     </div>
   `;
 
-  // ── OCR pass ────────────────────────────────────────────────────────────────
+  // ── OCR pass ──────────────────────────────────────────────────────────────
   try {
     await loadTesseract();
     for (let i = 0; i < total; i++) {
@@ -76,13 +76,16 @@ export async function renderConfirm(el) {
   hideStatus();
   renderCard(currentIdx);
 
-  // ── Render one card ─────────────────────────────────────────────────────────
+  // ── Render one card ───────────────────────────────────────────────────────
   function renderCard(idx) {
     currentIdx = idx;
-    const data   = cardData[idx];
-    const scroll = el.querySelector('#confirmScroll');
-    const shelf  = el.querySelector('#tokenShelf');
+    const data    = cardData[idx];
+    const scroll  = el.querySelector('#confirmScroll');
+    const shelf   = el.querySelector('#tokenShelf');
     const actions = el.querySelector('#confirmActions');
+
+    // Shared swipe-lock: set true while a drag is live so swipe nav doesn't fire
+    let swipeLocked = false;
 
     // ── Scroll area ──────────────────────────────────────────────────────────
     scroll.innerHTML = `
@@ -109,15 +112,7 @@ export async function renderConfirm(el) {
           </div>
         </div>
 
-        <div class="confirm-fields" id="confirmFields">
-          ${fieldRow('Name',     'name',     data.name)}
-          ${fieldRow('Title',    'title',    data.title)}
-          ${fieldRow('Company',  'company',  data.company)}
-          ${fieldRow('Email',    'email',    (data.emails || []).join(', '))}
-          ${fieldRow('Phone',    'phone',    (data.phones || []).join(', '))}
-          ${fieldRow('LinkedIn', 'linkedin', data.linkedin)}
-          ${fieldRow('Website',  'website',  data.website)}
-        </div>
+        <div class="confirm-fields" id="confirmFields"></div>
 
         <div class="context-section">
           <button class="context-toggle" id="contextToggle">
@@ -151,12 +146,15 @@ export async function renderConfirm(el) {
       </div>
     `;
 
+    // Populate the fields section (handles multi email/phone)
+    renderFields(idx);
+
     // ── Token shelf ──────────────────────────────────────────────────────────
     shelf.style.display = '';
     shelf.innerHTML = `
       <div class="shelf-header">
         <span class="shelf-title">FROM CARD</span>
-        <span class="shelf-hint" id="shelfHint">drag a token onto a field above</span>
+        <span class="shelf-hint">drag to fill · field→field to swap</span>
       </div>
       <div class="shelf-tokens" id="shelfTokens">
         ${(data._tokens || []).map((tok, i) => `
@@ -207,49 +205,135 @@ export async function renderConfirm(el) {
       syncFields(idx); advance(idx);
     });
 
-    setupSwipe(scroll,
-      () => { syncFields(idx); cardData[idx]._skipped = true; advance(idx); },
-      () => { syncFields(idx); advance(idx); }
-    );
-
-    // ── Drag-and-drop ────────────────────────────────────────────────────────
-    initTokenDrag(el, shelf, scroll, idx);
-  }
-
-  // ── Custom touch drag-and-drop ─────────────────────────────────────────────
-  function initTokenDrag(rootEl, shelfEl, scrollEl, idx) {
-    let ghost     = null;
-    let dragging  = null; // { tokenEl, text, tokenIdx }
-    let lastRow   = null;
-
-    shelfEl.querySelectorAll('.ocr-token').forEach(tok => {
-      tok.addEventListener('touchstart', onStart, { passive: false });
+    // Swipe left = skip, right = save (guarded by swipeLocked)
+    let swipeStartX = null;
+    scroll.addEventListener('touchstart', e => {
+      swipeStartX = e.touches[0].clientX;
+    }, { passive: true });
+    scroll.addEventListener('touchend', e => {
+      if (swipeStartX === null || swipeLocked) { swipeStartX = null; return; }
+      const dx = e.changedTouches[0].clientX - swipeStartX;
+      swipeStartX = null;
+      if (Math.abs(dx) < 64) return;
+      if (dx < 0) { syncFields(idx); cardData[idx]._skipped = true; advance(idx); }
+      else         { syncFields(idx); advance(idx); }
     });
 
-    function onStart(e) {
-      if (e.touches.length !== 1) return;
-      e.preventDefault(); // prevent scroll hijack on token
-      const touch = e.touches[0];
-      const tok   = e.currentTarget;
+    // ── Drag-and-drop (shelf → replace; field → swap) ────────────────────────
+    initTokenDrag(
+      el, shelf, scroll, idx,
+      (locked) => { swipeLocked = locked; }
+    );
+  }
 
+  // ── Render the fields section (can be called to refresh) ─────────────────
+  function renderFields(idx) {
+    const data    = cardData[idx];
+    const fieldsEl = el.querySelector('#confirmFields');
+    if (!fieldsEl) return;
+
+    // Ensure at least one slot for email and phone
+    const emails = (data.emails && data.emails.length) ? data.emails : [''];
+    const phones = (data.phones && data.phones.length) ? data.phones : [''];
+
+    const rows = [
+      fieldRow('Name',     'name',     data.name),
+      fieldRow('Title',    'title',    data.title),
+      fieldRow('Company',  'company',  data.company),
+      ...emails.map((e, i) => fieldRow(i === 0 ? 'Email' : '', `email-${i}`, e)),
+      addMoreRow('email'),
+      ...phones.map((p, i) => fieldRow(i === 0 ? 'Phone' : '', `phone-${i}`, p)),
+      addMoreRow('phone'),
+      fieldRow('LinkedIn', 'linkedin', data.linkedin),
+      fieldRow('Website',  'website',  data.website),
+    ];
+
+    fieldsEl.innerHTML = rows.join('');
+
+    // Clear (×) buttons
+    fieldsEl.querySelectorAll('.field-clear-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const row   = btn.closest('.confirm-field-row');
+        const input = row?.querySelector('.confirm-field-input');
+        if (input) {
+          input.value = '';
+          row.classList.add('field-empty');
+        }
+      });
+    });
+
+    // "+ Add" buttons
+    fieldsEl.querySelectorAll('.confirm-add-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        syncFields(idx);
+        const type = btn.dataset.type;
+        if (type === 'email') { cardData[idx].emails = cardData[idx].emails.length ? cardData[idx].emails : []; cardData[idx].emails.push(''); }
+        else                  { cardData[idx].phones = cardData[idx].phones.length ? cardData[idx].phones : []; cardData[idx].phones.push(''); }
+        renderFields(idx);
+        // Focus the newly added input
+        const inputs = fieldsEl.querySelectorAll(`input[data-key^="${type}-"]`);
+        if (inputs.length) inputs[inputs.length - 1].focus();
+      });
+    });
+  }
+
+  // ── Custom touch drag-and-drop ────────────────────────────────────────────
+  //
+  //  Two drag sources:
+  //    shelf token → field input  : REPLACE the field value
+  //    field drag-handle → field  : SWAP the two field values
+  //
+  function initTokenDrag(rootEl, shelfEl, scrollEl, idx, onLock) {
+    let ghost    = null;
+    let dragging = null; // { source:'shelf'|'field', text, tokenIdx?, tokenEl?, sourceRow? }
+    let lastRow  = null;
+
+    // ── Shelf token drag ──────────────────────────────────────────────────────
+    shelfEl.querySelectorAll('.ocr-token').forEach(tok => {
+      tok.addEventListener('touchstart', e => {
+        if (e.touches.length !== 1) return;
+        e.preventDefault();
+        dragging = {
+          source:   'shelf',
+          tokenEl:  tok,
+          text:     tok.dataset.text,
+          tokenIdx: Number(tok.dataset.idx),
+        };
+        tok.classList.add('token-dragging');
+        startDrag(e.touches[0]);
+      }, { passive: false });
+    });
+
+    // ── Field handle drag — event delegation on scroll area ───────────────────
+    scrollEl.addEventListener('touchstart', e => {
+      const handle = e.target.closest('.field-drag-handle');
+      if (!handle) return;
+      e.preventDefault();
+      const row   = handle.closest('.confirm-field-row');
+      const input = row?.querySelector('.confirm-field-input');
+      if (!input || !input.value.trim()) return; // don't drag empty fields
       dragging = {
-        tokenEl:   tok,
-        text:      tok.dataset.text,
-        tokenIdx:  Number(tok.dataset.idx),
+        source:    'field',
+        sourceRow: row,
+        text:      input.value.trim(),
       };
+      row.classList.add('field-dragging');
+      startDrag(e.touches[0]);
+    }, { passive: false });
 
-      // Ghost pill that follows the finger
+    // ── Shared drag lifecycle ─────────────────────────────────────────────────
+    function startDrag(touch) {
+      onLock(true);
       ghost = document.createElement('div');
-      ghost.className = 'drag-ghost';
+      ghost.className  = 'drag-ghost';
       ghost.textContent = dragging.text;
       positionGhost(touch.clientX, touch.clientY);
       document.body.appendChild(ghost);
-
-      tok.classList.add('token-dragging');
       scrollEl.querySelector('#confirmFields')?.classList.add('drag-active');
 
-      document.addEventListener('touchmove', onMove, { passive: false });
-      document.addEventListener('touchend',  onEnd);
+      document.addEventListener('touchmove',   onMove,  { passive: false });
+      document.addEventListener('touchend',    onEnd);
       document.addEventListener('touchcancel', onEnd);
     }
 
@@ -259,40 +343,48 @@ export async function renderConfirm(el) {
       const touch = e.touches[0];
       positionGhost(touch.clientX, touch.clientY);
 
-      // Highlight the field row under the finger
       const target = fieldRowAt(touch.clientX, touch.clientY);
       if (target !== lastRow) {
         lastRow?.classList.remove('drop-hover');
-        target?.classList.add('drop-hover');
+        // Don't highlight the source row as a drop target
+        if (target && target !== dragging?.sourceRow) {
+          target.classList.add('drop-hover');
+        }
         lastRow = target;
       }
     }
 
     function onEnd(e) {
-      document.removeEventListener('touchmove', onMove);
-      document.removeEventListener('touchend',  onEnd);
+      document.removeEventListener('touchmove',   onMove);
+      document.removeEventListener('touchend',    onEnd);
       document.removeEventListener('touchcancel', onEnd);
 
-      if (!ghost || !dragging) return;
+      if (!ghost || !dragging) { cleanup(); return; }
 
       const touch = e.changedTouches[0];
       const row   = fieldRowAt(touch.clientX, touch.clientY);
 
       if (row) {
-        const key   = row.dataset.key;
-        const input = row.querySelector('.confirm-field-input');
-        if (input) {
-          if (key === 'email' || key === 'phone') {
-            const cur = input.value.trim();
-            input.value = cur ? `${cur}, ${dragging.text}` : dragging.text;
-          } else {
-            input.value = dragging.text;
+        const targetInput = row.querySelector('.confirm-field-input');
+        if (targetInput) {
+          if (dragging.source === 'shelf') {
+            // ── REPLACE ──────────────────────────────────────────────────────
+            targetInput.value = dragging.text;
+            row.classList.toggle('field-empty', !dragging.text);
+            // Mark token as used in shelf
+            if (cardData[idx]._tokens[dragging.tokenIdx]) {
+              cardData[idx]._tokens[dragging.tokenIdx].used = true;
+            }
+            dragging.tokenEl.classList.add('used');
+          } else if (dragging.source === 'field' && row !== dragging.sourceRow) {
+            // ── SWAP ─────────────────────────────────────────────────────────
+            const srcInput = dragging.sourceRow.querySelector('.confirm-field-input');
+            const temp = srcInput.value;
+            srcInput.value = targetInput.value;
+            targetInput.value = temp;
+            dragging.sourceRow.classList.toggle('field-empty', !srcInput.value);
+            row.classList.toggle('field-empty', !targetInput.value);
           }
-          // Mark token as used
-          if (cardData[idx]._tokens[dragging.tokenIdx]) {
-            cardData[idx]._tokens[dragging.tokenIdx].used = true;
-          }
-          dragging.tokenEl.classList.add('used');
         }
       }
 
@@ -304,13 +396,16 @@ export async function renderConfirm(el) {
       ghost = null;
       lastRow?.classList.remove('drop-hover');
       lastRow = null;
-      dragging?.tokenEl.classList.remove('token-dragging');
+      dragging?.tokenEl?.classList.remove('token-dragging');
+      dragging?.sourceRow?.classList.remove('field-dragging');
       dragging = null;
       scrollEl.querySelector('#confirmFields')?.classList.remove('drag-active');
+      // Release swipe lock after a short delay so the touchend doesn't
+      // also trigger the swipe navigation
+      setTimeout(() => onLock(false), 60);
     }
 
     function positionGhost(cx, cy) {
-      // Centre horizontally on finger, sit above it
       const w = Math.min(ghost.offsetWidth || 160, 220);
       ghost.style.left = `${cx - w / 2}px`;
       ghost.style.top  = `${cy - 44}px`;
@@ -318,31 +413,59 @@ export async function renderConfirm(el) {
 
     // Walk up from elementFromPoint to find a .confirm-field-row
     function fieldRowAt(cx, cy) {
-      const el = document.elementFromPoint(cx, cy);
-      return el?.closest?.('.confirm-field-row') ?? null;
+      return document.elementFromPoint(cx, cy)?.closest?.('.confirm-field-row') ?? null;
     }
   }
 
-  // ── Field helpers ───────────────────────────────────────────────────────────
+  // ── Field helpers ─────────────────────────────────────────────────────────
   function fieldRow(label, key, value) {
-    const empty = !value || value === '';
+    const empty = !value;
     return `
       <div class="confirm-field-row ${empty ? 'field-empty' : ''}" data-key="${key}">
+        <div class="field-drag-handle" title="Drag to swap">
+          <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" opacity="0.35">
+            <circle cx="2.5" cy="2"  r="1.5"/><circle cx="7.5" cy="2"  r="1.5"/>
+            <circle cx="2.5" cy="7"  r="1.5"/><circle cx="7.5" cy="7"  r="1.5"/>
+            <circle cx="2.5" cy="12" r="1.5"/><circle cx="7.5" cy="12" r="1.5"/>
+          </svg>
+        </div>
         <span class="confirm-field-label">${label}</span>
         <input class="confirm-field-input" data-key="${key}"
-               value="${escHtml(value || '')}" placeholder="drag a token or type…">
+               value="${escHtml(value || '')}" placeholder="drag or type…">
+        <button class="field-clear-btn" title="Clear">×</button>
       </div>`;
   }
 
+  function addMoreRow(type) {
+    const label = type === 'email' ? 'email' : 'phone';
+    return `
+      <div class="confirm-add-row">
+        <button class="confirm-add-btn" data-type="${type}">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Add ${label}
+        </button>
+      </div>`;
+  }
+
+  // ── Sync fields → cardData ────────────────────────────────────────────────
   function syncFields(idx) {
     const scroll = el.querySelector('#confirmScroll');
-    scroll.querySelectorAll('.confirm-field-input').forEach(input => {
-      const key = input.dataset.key;
-      const val = input.value.trim();
-      if      (key === 'email') cardData[idx].emails = val ? val.split(/[,;]\s*/) : [];
-      else if (key === 'phone') cardData[idx].phones = val ? val.split(/[,;]\s*/) : [];
-      else                      cardData[idx][key]   = val;
-    });
+
+    // Single-value fields
+    for (const key of ['name', 'title', 'company', 'linkedin', 'website']) {
+      const input = scroll.querySelector(`input[data-key="${key}"]`);
+      if (input) cardData[idx][key] = input.value.trim();
+    }
+
+    // Multi-value: collect all email-N / phone-N inputs
+    cardData[idx].emails = [...scroll.querySelectorAll('input[data-key^="email-"]')]
+      .map(i => i.value.trim()).filter(Boolean);
+    cardData[idx].phones = [...scroll.querySelectorAll('input[data-key^="phone-"]')]
+      .map(i => i.value.trim()).filter(Boolean);
+
+    // Context fields
     const introBy        = scroll.querySelector('#introBy');
     const nextAction     = scroll.querySelector('#nextAction');
     const nextActionDate = scroll.querySelector('#nextActionDate');
@@ -356,7 +479,7 @@ export async function renderConfirm(el) {
     else await saveAll();
   }
 
-  // ── Save ─────────────────────────────────────────────────────────────────
+  // ── Save ──────────────────────────────────────────────────────────────────
   async function saveAll() {
     if (!app.currentSession) { showToast('No active session'); navigate('home'); return; }
     showStatus('Saving contacts…', 50);
@@ -429,13 +552,13 @@ export async function renderConfirm(el) {
     input.onchange = async () => {
       if (!input.files[0]) return;
       showStatus('Processing back side…', 40);
-      const dataUrl = await compressImage(input.files[0], 800, 0.7);
+      const dataUrl  = await compressImage(input.files[0], 800, 0.7);
       const tmpCanvas = await dataUrlToCanvas(dataUrl);
       try {
         const ocrResult = await runOCR(tmpCanvas, () => {});
         const parsed    = parseFields(ocrResult);
         mergeBack(cardData[idx], parsed);
-        // Append new tokens to shelf
+        // Append new tokens
         const newToks = buildTokensFromText(ocrResult.text, parsed);
         const existingTexts = new Set((cardData[idx]._tokens || []).map(t => t.text.toLowerCase()));
         newToks.forEach(t => { if (!existingTexts.has(t.text.toLowerCase())) cardData[idx]._tokens.push(t); });
@@ -467,7 +590,7 @@ function buildTokensFromText(rawText, parsed) {
     tokens.push({ text: text.trim(), icon, used });
   }
 
-  // Typed atoms first — shown as pre-used since they're already in fields
+  // Typed atoms first — pre-used (already assigned to fields)
   (parsed.emails  || []).forEach(t => add(t, '✉', true));
   (parsed.phones  || []).forEach(t => add(t, '📞', true));
   if (parsed.linkedin) add(parsed.linkedin, '🔗', true);
@@ -476,7 +599,8 @@ function buildTokensFromText(rawText, parsed) {
   // Remaining OCR lines — the ones the parser may have missed
   const usedLower = new Set([
     parsed.name, parsed.title, parsed.company,
-    ...(parsed.emails || []), ...(parsed.phones || []),
+    ...(parsed.emails  || []),
+    ...(parsed.phones  || []),
     parsed.linkedin, parsed.website,
   ].filter(Boolean).map(s => s.toLowerCase().trim()));
 
@@ -484,8 +608,7 @@ function buildTokensFromText(rawText, parsed) {
     .map(l => l.replace(/^\|\s*/, '').trim())
     .filter(l => l.length >= 3 && l.length <= 80)
     .forEach(line => {
-      const norm = line.toLowerCase().trim();
-      // Mark as used if the parser already picked it up
+      const norm   = line.toLowerCase().trim();
       const isUsed = [...usedLower].some(u => u && (norm === u || norm.includes(u) || u.includes(norm)));
       add(line, '', isUsed);
     });
@@ -496,28 +619,16 @@ function buildTokensFromText(rawText, parsed) {
 // ── Back-side merge ────────────────────────────────────────────────────────
 
 function mergeBack(target, src) {
-  if (!target.name    && src.name)    target.name    = src.name;
-  if (!target.title   && src.title)   target.title   = src.title;
-  if (!target.company && src.company) target.company = src.company;
+  if (!target.name     && src.name)     target.name     = src.name;
+  if (!target.title    && src.title)    target.title    = src.title;
+  if (!target.company  && src.company)  target.company  = src.company;
   if (!target.linkedin && src.linkedin) target.linkedin = src.linkedin;
   if (!target.website  && src.website)  target.website  = src.website;
   (src.emails || []).forEach(e => { if (!(target.emails || []).includes(e)) (target.emails = target.emails || []).push(e); });
   (src.phones || []).forEach(p => { if (!(target.phones || []).includes(p)) (target.phones = target.phones || []).push(p); });
 }
 
-// ── Misc helpers ────────────────────────────────────────────────────────────
-
-function setupSwipe(el, onLeft, onRight) {
-  let startX = null;
-  el.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, { passive: true });
-  el.addEventListener('touchend', e => {
-    if (startX === null) return;
-    const dx = e.changedTouches[0].clientX - startX;
-    startX = null;
-    if (Math.abs(dx) < 60) return;
-    if (dx < 0) onLeft(); else onRight();
-  });
-}
+// ── Misc helpers ───────────────────────────────────────────────────────────
 
 function dataUrlToCanvas(dataUrl) {
   return new Promise(res => {

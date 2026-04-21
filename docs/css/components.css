@@ -270,6 +270,65 @@
   background: transparent;
 }
 
+/* ── Field drag handle ───────────────────────────────────────────────────── */
+.field-drag-handle {
+  display: flex;
+  align-items: center;
+  padding: 0 8px 0 0;
+  cursor: grab;
+  touch-action: none;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  /* Widen tap target without changing layout */
+  margin-left: -4px;
+  padding-left: 4px;
+}
+
+.field-drag-handle:active { cursor: grabbing; }
+
+/* Field being dragged — dim the source input */
+.confirm-field-row.field-dragging .confirm-field-input {
+  opacity: 0.35;
+}
+
+/* Clear (×) button on each field */
+.field-clear-btn {
+  background: none;
+  border: none;
+  color: var(--border);
+  cursor: pointer;
+  font-size: 17px;
+  line-height: 1;
+  padding: 0 0 0 6px;
+  flex-shrink: 0;
+  font-family: var(--font);
+  transition: color 0.12s;
+  align-self: center;
+}
+.field-clear-btn:active { color: var(--danger); }
+
+/* "+ Add email / phone" row inside the fields card */
+.confirm-add-row {
+  display: flex;
+  padding: 5px 12px 5px 34px; /* 34px aligns with field input after drag-handle+label */
+  border-bottom: 1px solid var(--border);
+}
+.confirm-add-row:last-child { border-bottom: none; }
+
+.confirm-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font);
+  padding: 3px 0;
+}
+
 /* ── Token shelf ─────────────────────────────────────────────────────────── */
 .shelf-header {
   display: flex;
