@@ -1,5 +1,331 @@
 /* Capture & Detection screens */
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * LIVE CAMERA OVERLAY
+ * Covers the entire screen (above top-bar and bottom-nav) when active.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Hide app chrome while camera is open */
+body.camera-active .top-bar,
+body.camera-active .bottom-nav,
+body.camera-active .status-bar {
+  display: none !important;
+}
+
+/* Full-screen overlay */
+.cam-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  /* Respect notch / Dynamic Island */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Flash animation on shutter */
+.cam-overlay.cam-flash::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0.65;
+  pointer-events: none;
+  animation: cam-flash-anim 0.18s ease-out forwards;
+  z-index: 10;
+}
+@keyframes cam-flash-anim {
+  0%   { opacity: 0.65; }
+  100% { opacity: 0; }
+}
+
+/* ── Top bar ─────────────────────────────────────────────────────────────── */
+.cam-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px 8px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%);
+  position: relative;
+  z-index: 5;
+  flex-shrink: 0;
+}
+
+.cam-close-btn {
+  background: rgba(255,255,255,0.12);
+  border: none;
+  color: #fff;
+  border-radius: 50%;
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
+}
+.cam-close-btn:active { background: rgba(255,255,255,0.25); }
+
+.cam-session-label {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  flex: 1;
+  padding: 0 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cam-mode-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  background: rgba(29,111,66,0.18);
+  border: 1px solid rgba(29,111,66,0.4);
+  padding: 4px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Viewfinder ──────────────────────────────────────────────────────────── */
+.cam-viewfinder {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: #111;
+  min-height: 0; /* flex shrink */
+}
+
+#camVideo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Corner guide marks */
+.cam-corners {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.cam-corner {
+  position: absolute;
+  width: 22px; height: 22px;
+  border-color: rgba(255,255,255,0.6);
+  border-style: solid;
+  border-width: 0;
+}
+.cam-corner.tl { top: 24px; left: 24px; border-top-width: 2.5px; border-left-width: 2.5px; border-top-left-radius: 3px; }
+.cam-corner.tr { top: 24px; right: 24px; border-top-width: 2.5px; border-right-width: 2.5px; border-top-right-radius: 3px; }
+.cam-corner.bl { bottom: 24px; left: 24px; border-bottom-width: 2.5px; border-left-width: 2.5px; border-bottom-left-radius: 3px; }
+.cam-corner.br { bottom: 24px; right: 24px; border-bottom-width: 2.5px; border-right-width: 2.5px; border-bottom-right-radius: 3px; }
+
+/* Camera access denied state */
+.cam-no-access {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #888;
+  text-align: center;
+  padding: 24px;
+}
+.cam-no-access p { font-size: 15px; font-weight: 600; color: #aaa; margin: 0; }
+.cam-no-access small { font-size: 13px; line-height: 1.5; }
+
+/* ── Thumbnail strip ─────────────────────────────────────────────────────── */
+.cam-thumb-strip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 8px 12px 4px;
+  background: rgba(0,0,0,0.6);
+  flex-shrink: 0;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.cam-thumb-strip::-webkit-scrollbar { display: none; }
+.cam-thumb-strip:empty { display: none; }
+
+.cam-thumb {
+  position: relative;
+  flex-shrink: 0;
+  width: 52px; height: 52px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1.5px solid rgba(255,255,255,0.2);
+}
+.cam-thumb img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.cam-thumb-label {
+  position: absolute;
+  bottom: 0; right: 0;
+  background: rgba(29,111,66,0.85);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 4px;
+  border-top-left-radius: 4px;
+}
+
+/* ── Process button ──────────────────────────────────────────────────────── */
+.cam-process-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 700;
+  padding: 13px 24px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, opacity 0.2s, max-height 0.25s;
+  max-height: 54px;
+  overflow: hidden;
+}
+.cam-process-btn.cam-process-btn-hidden {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.cam-process-btn:active { background: #155c34; }
+
+/* ── Bottom controls ─────────────────────────────────────────────────────── */
+.cam-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px 16px;
+  background: rgba(0,0,0,0.85);
+  flex-shrink: 0;
+}
+
+.cam-ctrl-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 12px;
+  min-width: 56px;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
+}
+.cam-ctrl-btn span {
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font);
+  color: rgba(255,255,255,0.7);
+}
+.cam-ctrl-btn:active { background: rgba(255,255,255,0.12); }
+
+/* Shutter button */
+.cam-shutter-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cam-shutter-btn {
+  width: 72px; height: 72px;
+  border-radius: 50%;
+  background: transparent;
+  border: 3px solid #fff;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.08s;
+}
+.cam-shutter-btn:active { transform: scale(0.92); }
+
+.cam-shutter-inner {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  background: #fff;
+  display: block;
+  transition: transform 0.08s, background 0.08s;
+}
+.cam-shutter-btn:active .cam-shutter-inner {
+  transform: scale(0.88);
+  background: #ddd;
+}
+
+/* Photo count badge */
+.cam-count-badge {
+  position: absolute;
+  top: -4px; right: -4px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 50%;
+  width: 22px; height: 22px;
+  font-size: 12px;
+  font-weight: 800;
+  font-family: var(--font);
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid #000;
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * CAPTURE SCREEN — entry buttons (shown when camera overlay is closed)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+.cap-entry-wrap {
+  display: flex;
+  gap: 12px;
+  padding: 20px 16px 16px;
+}
+
+.cap-entry-btn {
+  flex: 1;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 28px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-family: var(--font);
+  background: var(--surface);
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.15s, background 0.15s;
+}
+.cap-entry-btn:active { opacity: 0.75; }
+
+.cap-entry-primary {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
+.cap-entry-primary svg { color: var(--accent); }
+.cap-entry-primary span { font-size: 14px; font-weight: 700; color: var(--accent); }
+.cap-entry-primary small { font-size: 12px; color: var(--text-muted); }
+
+.cap-entry-secondary svg { color: var(--text-muted); opacity: 0.7; }
+.cap-entry-secondary span { font-size: 14px; font-weight: 600; color: var(--text); }
+.cap-entry-secondary small { font-size: 12px; color: var(--text-muted); }
+
 /* ── Mode toggle ──────────────────────────────────────────────────────────── */
 .mode-toggle-bar {
   display: flex;
