@@ -139,7 +139,10 @@ function initOffline() {
 async function registerSW() {
   if ('serviceWorker' in navigator) {
     try {
-      await navigator.serviceWorker.register('./service-worker.js');
+      // updateViaCache:'none' forces the browser to always fetch service-worker.js
+      // fresh from the network (bypasses HTTP cache), so version bumps take effect
+      // without needing to wait 24h or do a hard reload.
+      await navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' });
     } catch (e) {
       console.warn('[SW] Registration failed:', e);
     }

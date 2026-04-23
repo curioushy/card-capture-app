@@ -279,11 +279,16 @@ export async function renderSettings(el) {
           await Promise.all(keys.map(k => caches.delete(k)));
         }
         showToast('Done — reloading…');
-        // Hard reload bypasses any remaining HTTP cache
-        setTimeout(() => window.location.reload(true), 700);
+        // reload(true) is deprecated/ignored in Chrome — use URL bust instead
+        // which forces a genuine fresh fetch of all resources.
+        setTimeout(() => {
+          window.location.replace(window.location.pathname + '?bust=' + Date.now());
+        }, 700);
       } catch (e) {
         showToast('Error: ' + e.message);
-        setTimeout(() => window.location.reload(true), 1000);
+        setTimeout(() => {
+          window.location.replace(window.location.pathname + '?bust=' + Date.now());
+        }, 1000);
       }
     });
   }
