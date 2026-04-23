@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Name Card Processor</title>
+<style>
+:root {
+  --bg: #f0f2f5;
+  --surface: #fff;
+  --border: #e0e0e0;
+  --text: #1a1a1a;
+  --muted: #6b7280;
+  --accent: #1d6f42;
+  --accent-h: #155c35;
+  --accent-lt: #e8f5ee;
+  --danger: #e74c3c;
+  --warn: #e67e22;
+  --ok: #2ecc71;
+  --r: 10px;
+  --r-sm: 6px;
+  --sh: 0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden}
+#app{display:flex;flex-direction:column;height:100vh}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.logo{font-weight:700;font-size:15px;color:var(--accent)}
+.crumb{color:var(--muted);font-size:13px}
+main{flex:1;overflow:hidden}
+.screen{display:none;height:100%}
+.screen.active{display:flex;flex-direction:column}
+
+/* ── Upload ── */
+#screen-upload{align-items:center;justify-content:center;gap:16px;padding:32px;overflow:auto}
+.upload-zone{border:2px dashed var(--border);border-radius:var(--r);padding:52px 40px;text-align:center;cursor:pointer;transition:all .2s;background:var(--surface);max-width:560px;width:100%}
+.upload-zone:hover,.upload-zone.over{border-color:var(--accent);background:var(--accent-lt)}
+.upload-icon{font-size:40px;margin-bottom:12px}
+.upload-zone h2{font-size:18px;margin-bottom:6px}
+.upload-zone p{color:var(--muted);font-size:13px}
+.photo-grid{display:flex;flex-wrap:wrap;gap:8px;max-width:560px;width:100%}
+.photo-thumb{position:relative;width:80px;height:60px;border-radius:var(--r-sm);overflow:hidden;box-shadow:var(--sh)}
+.photo-thumb img{width:100%;height:100%;object-fit:cover}
+.photo-thumb .rm{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;line-height:1}
+.upload-act{max-width:560px;width:100%;display:flex;justify-content:flex-end}
+
+/* ── Detect ── */
+#screen-detect{flex-direction:row}
+.det-photo{flex:1;position:relative;background:#111;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.det-photo img{max-width:100%;max-height:100%;display:block}
+.det-photo canvas{position:absolute;cursor:default}
+.det-panel{width:340px;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;flex-shrink:0}
+.det-panel-head{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
+.det-panel-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.det-panel-foot{padding:14px 16px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
+.photo-nav,.card-nav{display:flex;align-items:center;gap:8px;font-size:13px}
+.card-nav{justify-content:center}
+.nav-lbl{flex:1;text-align:center;font-size:13px;color:var(--muted)}
+.det-crop{width:100%;background:#f5f5f5;border-radius:var(--r-sm);overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:80px}
+.det-crop canvas,.det-crop img{max-width:100%;max-height:200px;display:block}
+.conf-badge{font-size:12px;padding:2px 0}
+.det-btns{display:flex;gap:8px}
+
+/* ── Processing ── */
+#screen-processing{align-items:center;justify-content:center;gap:16px}
+.proc-title{font-size:18px;font-weight:600}
+.proc-sub{color:var(--muted);font-size:14px}
+.prog-bar{width:300px;height:8px;background:var(--border);border-radius:4px;overflow:hidden}
+.prog-fill{height:100%;background:var(--accent);border-radius:4px;transition:width .3s}
+
+/* ── Confirm ── */
+#screen-confirm{flex-direction:row}
+.conf-img-col{flex:1;background:#111;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:20px;overflow:hidden}
+.conf-img-col canvas{max-width:100%;max-height:calc(100% - 48px);object-fit:contain;border-radius:var(--r-sm)}
+.conf-img-nav{display:flex;align-items:center;gap:10px;color:#fff;font-size:13px}
+.conf-fields-col{width:380px;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;flex-shrink:0}
+.conf-fields-head{padding:14px 16px;border-bottom:1px solid var(--border);font-weight:600;font-size:14px}
+.conf-fields-body{flex:1;overflow-y:auto;padding:16px}
+.conf-fields-foot{padding:14px 16px;border-top:1px solid var(--border);display:flex;gap:8px}
+.f-row{margin-bottom:13px}
+.f-label{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.f-input{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r-sm);font-size:13px;font-family:inherit;transition:border-color .15s}
+.f-input:focus{outline:none;border-color:var(--accent)}
+.f-input.warn{border-color:var(--warn);background:#fff9f0}
+.chip-wrap{display:flex;flex-wrap:wrap;gap:5px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--r-sm);min-height:36px;cursor:text;align-items:center}
+.chip-wrap:focus-within{border-color:var(--accent)}
+.chip{display:inline-flex;align-items:center;gap:3px;background:var(--accent-lt);color:var(--accent);padding:2px 7px;border-radius:20px;font-size:12px}
+.chip button{background:none;border:none;cursor:pointer;color:var(--accent);padding:0;font-size:13px;line-height:1;margin-left:1px}
+.chip-in{border:none;outline:none;background:transparent;font-size:13px;font-family:inherit;flex:1;min-width:60px}
+
+/* ── Results ── */
+#screen-results{flex-direction:column}
+.res-head{padding:14px 24px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.res-title{font-weight:600;font-size:15px}
+.res-actions{display:flex;gap:8px}
+.res-body{flex:1;overflow:auto;padding:20px 24px}
+table{width:100%;border-collapse:collapse;background:var(--surface);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh)}
+thead{background:var(--bg)}
+th{padding:9px 12px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);border-bottom:1px solid var(--border)}
+td{padding:9px 12px;font-size:13px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+.thumb-img{width:52px;height:32px;object-fit:cover;border-radius:4px}
+.empty-row td{text-align:center;color:var(--muted);padding:40px}
+
+/* ── Shared buttons ── */
+.btn{padding:8px 16px;border-radius:var(--r-sm);font-size:13px;font-weight:500;cursor:pointer;border:none;font-family:inherit;transition:all .15s;white-space:nowrap}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover:not(:disabled){background:var(--accent-h)}
+.btn-primary:disabled{opacity:.4;cursor:default}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}
+.btn-outline:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.btn-ghost{background:transparent;border:none;color:var(--muted)}
+.btn-ghost:hover{color:var(--text)}
+.btn-full{width:100%}
+.nav-btn{width:30px;height:30px;border-radius:50%;background:var(--bg);border:1px solid var(--border);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;color:var(--muted);flex-shrink:0}
+.nav-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.nav-btn:disabled{opacity:.3;cursor:default}
+.nav-btn-inv{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.3);color:#fff}
+.nav-btn-inv:hover:not(:disabled){background:rgba(255,255,255,.25);border-color:#fff;color:#fff}
+
+/* ── Loading states ── */
+.spinner{width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-state{display:flex;flex-direction:column;align-items:center;gap:10px;padding:24px;color:var(--muted);font-size:13px}
+
+/* ── Toast ── */
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(60px);background:#1a1a1a;color:#fff;padding:9px 18px;border-radius:8px;font-size:13px;opacity:0;transition:all .22s;pointer-events:none;z-index:9999;white-space:nowrap}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <span class="logo">Name Card Processor</span>
+    <span class="crumb" id="crumb"></span>
+  </header>
+  <main>
+
+    <!-- Upload -->
+    <section id="screen-upload" class="screen active">
+      <div class="upload-zone" id="uploadZone">
+        <div class="upload-icon">🗂</div>
+        <h2>Drop photos here</h2>
+        <p>or click to browse &nbsp;·&nbsp; JPEG, PNG, HEIC</p>
+        <input id="fileInput" type="file" accept="image/*" multiple style="display:none">
+      </div>
+      <div class="photo-grid" id="photoGrid"></div>
+      <div class="upload-act" id="uploadAct" style="display:none">
+        <button class="btn btn-primary" id="processBtn">Process 0 Photos →</button>
+      </div>
+    </section>
+
+    <!-- Detect -->
+    <section id="screen-detect" class="screen">
+      <div class="det-photo" id="detPhotoCol">
+        <img id="detImg" alt="">
+        <canvas id="overlayCvs"></canvas>
+      </div>
+      <div class="det-panel">
+        <div class="det-panel-head">
+          <div class="photo-nav" id="photoNav">
+            <button class="nav-btn" id="prevPhotoBtn">‹</button>
+            <span class="nav-lbl" id="photoLbl">Photo 1 of 1</span>
+            <button class="nav-btn" id="nextPhotoBtn">›</button>
+          </div>
+        </div>
+        <div class="det-panel-body" id="detPanelBody">
+          <div class="loading-state" id="detLoading">
+            <div class="spinner"></div>
+            <span id="detLoadMsg">Scanning card borders…</span>
+          </div>
+          <div id="detCardState" style="display:none;flex-direction:column;gap:12px">
+            <div class="card-nav">
+              <button class="nav-btn" id="prevCardBtn">‹</button>
+              <span class="nav-lbl" id="cardLbl">Card 1 of 1</span>
+              <button class="nav-btn" id="nextCardBtn">›</button>
+            </div>
+            <div class="det-crop" id="detCrop"></div>
+            <div class="conf-badge" id="detBadge"></div>
+            <div class="det-btns">
+              <button class="btn btn-outline" id="skipCardBtn" style="flex:1">Skip</button>
+              <button class="btn btn-primary" id="includeCardBtn" style="flex:1">✓ Include</button>
+            </div>
+          </div>
+          <div id="detEmpty" style="display:none;color:var(--muted);font-size:13px;text-align:center;padding:24px">
+            No cards found — draw one manually
+          </div>
+        </div>
+        <div class="det-panel-foot">
+          <button class="btn btn-outline btn-full" id="addManualBtn">+ Add card manually</button>
+          <button class="btn btn-primary btn-full" id="confirmCardsBtn" disabled>Confirm 0 cards →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Processing -->
+    <section id="screen-processing" class="screen">
+      <div class="spinner" style="width:32px;height:32px;border-width:4px"></div>
+      <div class="proc-title">Running OCR</div>
+      <div class="proc-sub" id="procMsg">Initialising recognition engine…</div>
+      <div class="prog-bar"><div class="prog-fill" id="progFill" style="width:0%"></div></div>
+    </section>
+
+    <!-- Confirm -->
+    <section id="screen-confirm" class="screen">
+      <div class="conf-img-col">
+        <div class="conf-img-nav">
+          <button class="nav-btn nav-btn-inv" id="confPrev">‹</button>
+          <span id="confLbl" style="font-size:13px">Card 1 of 1</span>
+          <button class="nav-btn nav-btn-inv" id="confNext">›</button>
+        </div>
+        <canvas id="confCanvas"></canvas>
+      </div>
+      <div class="conf-fields-col">
+        <div class="conf-fields-head">Review extracted fields</div>
+        <div class="conf-fields-body" id="confBody"></div>
+        <div class="conf-fields-foot">
+          <button class="btn btn-outline" id="confSkip" style="flex:1">Skip</button>
+          <button class="btn btn-primary" id="confSave" style="flex:2">Save &amp; Next →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Results -->
+    <section id="screen-results" class="screen">
+      <div class="res-head">
+        <span class="res-title" id="resTitle">0 contacts</span>
+        <div class="res-actions">
+          <button class="btn btn-outline" id="expCsvBtn">⬇ CSV</button>
+          <button class="btn btn-outline" id="expJsonBtn">⬇ JSON</button>
+          <button class="btn btn-outline" id="expVcfBtn">⬇ vCard</button>
+          <button class="btn btn-ghost" id="startOverBtn">Start over</button>
+        </div>
+      </div>
+      <div class="res-body">
+        <table>
+          <thead><tr>
+            <th></th><th>Name</th><th>Title</th><th>Company</th><th>Email</th><th>Phone</th>
+          </tr></thead>
+          <tbody id="resBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+</div>
+<div id="toast"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+const S = {
+  photos: [],        // [{dataUrl}]
+  photoCards: [],    // per photo: null | [{corners,cropCanvas,confidence,accepted,isManual,isFallback}]
+  allCards: [],      // flat [{photoIdx, card}]
+  currentPhotoIdx: 0,
+  currentCardIdx: 0,
+  ocrResults: [],    // [{fields, cropCanvas}] after OCR
+  contacts: [],      // saved contacts
+  currentConfirmIdx: 0,
+};
+
+// ── DOM helpers ───────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+function showToast(msg, dur = 3000) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.classList.remove('show'), dur);
+}
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  $(id).classList.add('active');
+}
+function setCrumb(txt) { $('crumb').textContent = txt ? '› ' + txt : ''; }
+function loadImg(url) {
+  return new Promise(res => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.src = url;
+    if (img.complete && img.naturalWidth) res(img);
+  });
+}
+function dl(filename, url) {
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+}
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// ── OpenCV loader ─────────────────────────────────────────────────────────────
+let cvReady = null;
+function loadOpenCV() {
+  if (cvReady) return cvReady;
+  cvReady = new Promise((resolve, reject) => {
+    if (window.cv && cv.Mat) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://docs.opencv.org/4.8.0/opencv.js';
+    s.async = true;
+    s.onload = () => {
+      if (!window.cv) { reject(new Error('OpenCV missing')); return; }
+      if (cv.Mat) { resolve(); return; }
+      cv['onRuntimeInitialized'] = resolve;
+      const t = setInterval(() => { if (cv.Mat) { clearInterval(t); resolve(); } }, 100);
+      setTimeout(() => { clearInterval(t); reject(new Error('OpenCV timeout')); }, 30000);
+    };
+    s.onerror = () => reject(new Error('OpenCV load failed'));
+    document.head.appendChild(s);
+  });
+  return cvReady;
+}
+
+// ── Detection pipeline (adapted from detect.js) ───────────────────────────────
+function detectCards(imageEl) {
+  if (!window.cv || !cv.Mat) throw new Error('OpenCV not ready');
+
+  const srcFull = cv.imread(imageEl);
+  const fullW = srcFull.cols, fullH = srcFull.rows;
+  const DMAX = 1200;
+  const longest = Math.max(fullW, fullH);
+  const scale = longest > DMAX ? DMAX / longest : 1;
+  const dW = Math.round(fullW * scale), dH = Math.round(fullH * scale);
+
+  let src;
+  if (scale < 1) {
+    src = new cv.Mat();
+    cv.resize(srcFull, src, new cv.Size(dW, dH), 0, 0, cv.INTER_AREA);
+  } else { src = srcFull; }
+
+  const gray = new cv.Mat();
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+  const minArea = dW * dH * 0.02;
+  const canny   = detectViaCanny(gray, minArea).map(c => ({...c, source:'canny'}));
+  const otsu    = detectViaOtsu(gray, minArea).map(c => ({...c, source:'otsu'}));
+  const adapt   = detectViaAdaptive(gray, minArea).map(c => ({...c, source:'adaptive'}));
+
+  let merged = mergeByIoU([...canny, ...otsu, ...adapt]);
+
+  if (merged.length > 1) {
+    const areas = merged.map(m => m.area).sort((a, b) => a - b);
+    const med = areas[Math.floor(areas.length / 2)];
+    merged = merged.filter(m => m.area <= med * 4 && m.area >= med / 4);
+  }
+
+  const cards = merged.map(m => {
+    const corners = m.corners.map(c => ({x: c.x / scale, y: c.y / scale}));
+    const ordered = orderCorners(corners);
+    return {
+      corners: ordered,
+      cropCanvas: dewarp(srcFull, ordered, fullW, fullH),
+      area: m.area / (scale * scale),
+      confidence: m.confidence,
+      sources: [...m.sources],
+    };
+  });
+
+  cards.sort((a, b) => b.confidence - a.confidence || b.area - a.area);
+
+  if (scale < 1) src.delete();
+  srcFull.delete();
+  gray.delete();
+
+  if (cards.length === 0) {
+    const fc = document.createElement('canvas');
+    fc.width = fullW; fc.height = fullH;
+    const tmp = cv.imread(imageEl); cv.imshow(fc, tmp); tmp.delete();
+    return [{
+      corners: [{x:0,y:0},{x:fullW-1,y:0},{x:fullW-1,y:fullH-1},{x:0,y:fullH-1}],
+      cropCanvas: fc, area: fullW*fullH, confidence: 0, sources: [], isFallback: true,
+    }];
+  }
+  return cards;
+}
+
+function detectViaOtsu(gray, minArea) {
+  const bin = new cv.Mat();
+  cv.threshold(gray, bin, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+  const k = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5,5));
+  const cl = new cv.Mat();
+  cv.morphologyEx(bin, cl, cv.MORPH_CLOSE, k);
+  const r = extractCandidates(cl, minArea);
+  bin.delete(); cl.delete(); k.delete();
+  return r;
+}
+
+function detectViaAdaptive(gray, minArea) {
+  const bin = new cv.Mat();
+  cv.adaptiveThreshold(gray, bin, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 51, 5);
+  const k = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(7,7));
+  const cl = new cv.Mat();
+  cv.morphologyEx(bin, cl, cv.MORPH_CLOSE, k);
+  const r = extractCandidates(cl, minArea);
+  bin.delete(); cl.delete(); k.delete();
+  return r;
+}
+
+function detectViaCanny(gray, minArea) {
+  const blurred = new cv.Mat();
+  cv.GaussianBlur(gray, blurred, new cv.Size(5,5), 0);
+  const cards = [];
+  for (const [lo, hi] of [[30,90],[50,150],[80,200]]) {
+    const edges = new cv.Mat();
+    cv.Canny(blurred, edges, lo, hi);
+    const k = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3,3));
+    const dil = new cv.Mat();
+    cv.dilate(edges, dil, k);
+    cards.push(...extractCandidates(dil, minArea));
+    edges.delete(); dil.delete(); k.delete();
+  }
+  blurred.delete();
+  return cards;
+}
+
+function extractCandidates(binary, minArea) {
+  const contours = new cv.MatVector(), hierarchy = new cv.Mat();
+  cv.findContours(binary, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+  const maxArea = binary.cols * binary.rows * 0.5;
+  const cards = [];
+  for (let i = 0; i < contours.size(); i++) {
+    const cnt = contours.get(i);
+    const area = cv.contourArea(cnt);
+    if (area < minArea || area > maxArea) { cnt.delete(); continue; }
+    const peri = cv.arcLength(cnt, true);
+    const approx = new cv.Mat();
+    cv.approxPolyDP(cnt, approx, 0.03 * peri, true);
+    let corners4 = null;
+    if (approx.rows >= 4 && approx.rows <= 8) {
+      const raw = [];
+      for (let j = 0; j < approx.rows; j++)
+        raw.push({x: approx.data32S[j*2], y: approx.data32S[j*2+1]});
+      corners4 = approx.rows === 4 ? raw : reduceToFour(raw);
+    } else {
+      const rect = cv.minAreaRect(cnt);
+      const w = rect.size.width, h = rect.size.height;
+      if (w > 0 && h > 0) {
+        const asp = Math.max(w,h) / Math.min(w,h);
+        if (asp >= 1.3 && asp <= 2.5) {
+          const box = cv.RotatedRect.points(rect);
+          corners4 = box.map(p => ({x:p.x,y:p.y}));
+        }
+      }
+    }
+    if (corners4) {
+      const bb = bbox(corners4);
+      const bw = bb.x2-bb.x1, bh = bb.y2-bb.y1;
+      if (bw > 0 && bh > 0) {
+        const asp = Math.max(bw,bh) / Math.min(bw,bh);
+        if (asp >= 1.3 && asp <= 2.8) cards.push({corners: corners4, area});
+      }
+    }
+    approx.delete(); cnt.delete();
+  }
+  contours.delete(); hierarchy.delete();
+  return cards;
+}
+
+function mergeByIoU(all) {
+  const sorted = [...all].sort((a,b) => b.area - a.area);
+  const groups = [];
+  for (const c of sorted) {
+    const b = bbox(c.corners);
+    const match = groups.find(g => iou(b, g.box) > 0.5);
+    if (match) match.sources.add(c.source);
+    else groups.push({corners: c.corners, area: c.area, box: b, sources: new Set([c.source])});
+  }
+  return groups.map(g => ({corners: g.corners, area: g.area, sources: g.sources, confidence: g.sources.size}));
+}
+
+function iou(a, b) {
+  const ix = Math.max(0, Math.min(a.x2,b.x2) - Math.max(a.x1,b.x1));
+  const iy = Math.max(0, Math.min(a.y2,b.y2) - Math.max(a.y1,b.y1));
+  const inter = ix * iy;
+  const u = (a.x2-a.x1)*(a.y2-a.y1) + (b.x2-b.x1)*(b.y2-b.y1) - inter;
+  return u > 0 ? inter / u : 0;
+}
+
+function bbox(pts) {
+  const xs = pts.map(p=>p.x), ys = pts.map(p=>p.y);
+  return {x1:Math.min(...xs),y1:Math.min(...ys),x2:Math.max(...xs),y2:Math.max(...ys)};
+}
+
+function reduceToFour(pts) {
+  const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);
+  const mn=Math.min,mx=Math.max;
+  const d=(p,cx,cy)=>Math.hypot(p.x-cx,p.y-cy);
+  const cl=(cx,cy)=>pts.reduce((b,p)=>d(p,cx,cy)<d(b,cx,cy)?p:b,pts[0]);
+  return [cl(mn(...xs),mn(...ys)),cl(mx(...xs),mn(...ys)),cl(mx(...xs),mx(...ys)),cl(mn(...xs),mx(...ys))];
+}
+
+function orderCorners(pts) {
+  const s = [...pts].sort((a,b)=>a.y-b.y);
+  const top = s.slice(0,2).sort((a,b)=>a.x-b.x);
+  const bot = s.slice(2).sort((a,b)=>a.x-b.x);
+  return [top[0],top[1],bot[1],bot[0]];
+}
+
+function dewarp(src, corners, imgW, imgH) {
+  const [tl,tr,br,bl] = corners;
+  const maxW = Math.round(Math.max(Math.hypot(tr.x-tl.x,tr.y-tl.y),Math.hypot(br.x-bl.x,br.y-bl.y)));
+  const maxH = Math.round(Math.max(Math.hypot(bl.x-tl.x,bl.y-tl.y),Math.hypot(br.x-tr.x,br.y-tr.y)));
+  if (maxW < 10 || maxH < 10) {
+    const c = document.createElement('canvas'); c.width=imgW; c.height=imgH; cv.imshow(c,src); return c;
+  }
+  const sp = cv.matFromArray(4,1,cv.CV_32FC2,[tl.x,tl.y,tr.x,tr.y,br.x,br.y,bl.x,bl.y]);
+  const dp = cv.matFromArray(4,1,cv.CV_32FC2,[0,0,maxW-1,0,maxW-1,maxH-1,0,maxH-1]);
+  const M = cv.getPerspectiveTransform(sp,dp);
+  const dst = new cv.Mat();
+  cv.warpPerspective(src,dst,M,new cv.Size(maxW,maxH));
+  const c = document.createElement('canvas'); c.width=maxW; c.height=maxH; cv.imshow(c,dst);
+  sp.delete(); dp.delete(); M.delete(); dst.delete();
+  return c;
+}
+
+async function redewarpCard(card, dataUrl) {
+  if (!window.cv || !cv.Mat) return;
+  const img = await loadImg(dataUrl);
+  const srcMat = cv.imread(img);
+  card.corners = orderCorners(card.corners);
+  card.cropCanvas = dewarp(srcMat, card.corners, srcMat.cols, srcMat.rows);
+  srcMat.delete();
+}
+
+// ── Upload screen ─────────────────────────────────────────────────────────────
+function initUpload() {
+  const zone = $('uploadZone');
+  const input = $('fileInput');
+  const grid = $('photoGrid');
+  const act = $('uploadAct');
+  const btn = $('processBtn');
+
+  zone.addEventListener('click', () => input.click());
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('over');
+    addFiles([...e.dataTransfer.files].filter(f => f.type.startsWith('image/')));
+  });
+  input.addEventListener('change', () => { addFiles([...input.files]); input.value = ''; });
+
+  async function addFiles(files) {
+    for (const f of files) {
+      const dataUrl = await new Promise(res => {
+        const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(f);
+      });
+      S.photos.push({dataUrl});
+    }
+    renderGrid();
+  }
+
+  function renderGrid() {
+    grid.innerHTML = '';
+    S.photos.forEach((p, i) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'photo-thumb';
+      const img = document.createElement('img');
+      img.src = p.dataUrl;
+      const rm = document.createElement('button');
+      rm.className = 'rm'; rm.textContent = '×';
+      rm.onclick = e => { e.stopPropagation(); S.photos.splice(i,1); renderGrid(); };
+      wrap.appendChild(img); wrap.appendChild(rm);
+      grid.appendChild(wrap);
+    });
+    const n = S.photos.length;
+    act.style.display = n ? 'flex' : 'none';
+    btn.textContent = `Process ${n} Photo${n===1?'':'s'} →`;
+  }
+
+  btn.addEventListener('click', () => {
+    if (!S.photos.length) return;
+    S.photoCards = S.photos.map(() => null);
+    S.allCards = [];
+    S.currentPhotoIdx = 0;
+    S.currentCardIdx = 0;
+    showScreen('screen-detect');
+    setCrumb('Detect Cards');
+    initDetect();
+  });
+}
+
+// ── Detection screen ──────────────────────────────────────────────────────────
+function initDetect() {
+  const detImg      = $('detImg');
+  const overlayCvs  = $('overlayCvs');
+  const detLoading  = $('detLoading');
+  const detCard     = $('detCardState');
+  const detEmpty    = $('detEmpty');
+  const prevPhotoBtn = $('prevPhotoBtn');
+  const nextPhotoBtn = $('nextPhotoBtn');
+  const photoLbl    = $('photoLbl');
+  const prevCardBtn = $('prevCardBtn');
+  const nextCardBtn = $('nextCardBtn');
+  const cardLbl     = $('cardLbl');
+  const detCrop     = $('detCrop');
+  const detBadge    = $('detBadge');
+  const skipCardBtn = $('skipCardBtn');
+  const includeCardBtn = $('includeCardBtn');
+  const confirmCardsBtn = $('confirmCardsBtn');
+  const addManualBtn = $('addManualBtn');
+
+  let drag = null;   // {cornerIdx, card}
+  let manualMode = false;
+  let manualStart = null;
+
+  // Sync overlay canvas to sit exactly on the rendered image
+  function syncCanvas() {
+    if (!detImg.naturalWidth) return;
+    const iRect = detImg.getBoundingClientRect();
+    const pRect = $('detPhotoCol').getBoundingClientRect();
+    overlayCvs.width  = detImg.naturalWidth;
+    overlayCvs.height = detImg.naturalHeight;
+    overlayCvs.style.left   = (iRect.left - pRect.left) + 'px';
+    overlayCvs.style.top    = (iRect.top  - pRect.top)  + 'px';
+    overlayCvs.style.width  = iRect.width  + 'px';
+    overlayCvs.style.height = iRect.height + 'px';
+  }
+  window.addEventListener('resize', syncCanvas);
+
+  function canvasPt(e) {
+    const r = overlayCvs.getBoundingClientRect();
+    const sx = overlayCvs.width / r.width;
+    const sy = overlayCvs.height / r.height;
+    const src = e.touches ? e.touches[0] : (e.changedTouches ? e.changedTouches[0] : e);
+    return {x: (src.clientX - r.left) * sx, y: (src.clientY - r.top) * sy};
+  }
+
+  async function loadPhoto(idx) {
+    S.currentPhotoIdx = idx;
+    photoLbl.textContent = `Photo ${idx+1} of ${S.photos.length}`;
+    prevPhotoBtn.disabled = idx === 0;
+    nextPhotoBtn.disabled = idx === S.photos.length - 1;
+    detImg.src = S.photos[idx].dataUrl;
+    await new Promise(res => {
+      if (detImg.complete && detImg.naturalWidth) { res(); return; }
+      detImg.onload = res;
+    });
+    syncCanvas();
+  }
+
+  function rebuildFlat() {
+    S.allCards = [];
+    S.photos.forEach((_, pi) => {
+      const cards = S.photoCards[pi];
+      if (cards) cards.forEach(card => S.allCards.push({photoIdx: pi, card}));
+    });
+    updateConfirmBtn();
+  }
+
+  function updateConfirmBtn() {
+    const n = S.allCards.filter(a => a.card.accepted).length;
+    confirmCardsBtn.textContent = `Confirm ${n} card${n===1?'':'s'} →`;
+    confirmCardsBtn.disabled = n === 0;
+  }
+
+  function renderOverlay() {
+    const ctx = overlayCvs.getContext('2d');
+    ctx.clearRect(0, 0, overlayCvs.width, overlayCvs.height);
+    const cards = S.photoCards[S.currentPhotoIdx] || [];
+    const activeCard = S.allCards[S.currentCardIdx]?.card;
+
+    cards.forEach((card, i) => {
+      const isActive = card === activeCard;
+      const pts = card.corners;
+      if (!pts || pts.length < 4) return;
+
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let j = 1; j < pts.length; j++) ctx.lineTo(pts[j].x, pts[j].y);
+      ctx.closePath();
+
+      const col = card.accepted ? '#2ecc71' : '#e74c3c';
+      ctx.strokeStyle = isActive ? col : col + '99';
+      ctx.fillStyle   = isActive ? col + '28' : col + '12';
+      ctx.lineWidth   = isActive ? 3 : 1.5;
+      ctx.stroke(); ctx.fill();
+
+      // Number badge
+      const cx = pts.reduce((s,p)=>s+p.x,0)/4;
+      const cy = pts.reduce((s,p)=>s+p.y,0)/4;
+      const r  = isActive ? 18 : 13;
+      ctx.fillStyle = isActive ? col : col + '99';
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${isActive?13:10}px sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(i+1, cx, cy);
+
+      // Corner handles for active card
+      if (isActive) {
+        pts.forEach(p => {
+          ctx.beginPath(); ctx.arc(p.x, p.y, 10, 0, Math.PI*2);
+          ctx.fillStyle = col; ctx.fill();
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+        });
+      }
+    });
+  }
+
+  function showPanel() {
+    const cards = S.photoCards[S.currentPhotoIdx];
+    if (!cards) {
+      detLoading.style.display = 'flex'; detCard.style.display = 'none'; detEmpty.style.display = 'none'; return;
+    }
+    detLoading.style.display = 'none';
+    if (S.allCards.length === 0) {
+      detCard.style.display = 'none'; detEmpty.style.display = 'block'; return;
+    }
+
+    // Clamp to valid index
+    const photosCards = S.allCards.filter(a => a.photoIdx === S.currentPhotoIdx);
+    if (photosCards.length > 0) {
+      const firstIdx = S.allCards.indexOf(photosCards[0]);
+      const lastIdx  = S.allCards.indexOf(photosCards[photosCards.length-1]);
+      S.currentCardIdx = Math.max(firstIdx, Math.min(S.currentCardIdx, lastIdx));
+    }
+
+    detCard.style.display = 'flex'; detEmpty.style.display = 'none';
+
+    const item = S.allCards[S.currentCardIdx];
+    if (!item) return;
+
+    cardLbl.textContent = `Card ${S.currentCardIdx+1} of ${S.allCards.length}`;
+    prevCardBtn.disabled = S.currentCardIdx === 0;
+    nextCardBtn.disabled = S.currentCardIdx === S.allCards.length - 1;
+
+    // Crop preview
+    detCrop.innerHTML = '';
+    if (item.card.cropCanvas) {
+      const c = document.createElement('canvas');
+      c.width  = item.card.cropCanvas.width;
+      c.height = item.card.cropCanvas.height;
+      c.getContext('2d').drawImage(item.card.cropCanvas, 0, 0);
+      detCrop.appendChild(c);
+    }
+
+    // Confidence badge
+    const card = item.card;
+    if (card.isFallback) {
+      detBadge.textContent = 'No card detected — showing full photo';
+      detBadge.style.color = 'var(--warn)';
+    } else if (card.isManual) {
+      detBadge.textContent = '✎ Manually drawn';
+      detBadge.style.color = 'var(--muted)';
+    } else {
+      const c = card.confidence || 1;
+      if (c >= 3)    { detBadge.textContent = '●●● High confidence';   detBadge.style.color = 'var(--ok)'; }
+      else if (c===2){ detBadge.textContent = '●●○ Medium — verify';   detBadge.style.color = 'var(--muted)'; }
+      else           { detBadge.textContent = '●○○ Low — verify';      detBadge.style.color = 'var(--warn)'; }
+    }
+
+    if (card.accepted) {
+      includeCardBtn.textContent = '✓ Included'; includeCardBtn.classList.add('btn-primary'); includeCardBtn.classList.remove('btn-outline');
+      skipCardBtn.textContent    = 'Skip';        skipCardBtn.classList.remove('btn-primary'); skipCardBtn.classList.add('btn-outline');
+    } else {
+      includeCardBtn.textContent = '+ Include'; includeCardBtn.classList.remove('btn-primary'); includeCardBtn.classList.add('btn-outline');
+      skipCardBtn.textContent    = '✗ Skipped';  skipCardBtn.classList.add('btn-primary'); skipCardBtn.classList.remove('btn-outline');
+    }
+
+    renderOverlay();
+  }
+
+  // ── Corner handle drag ────────────────────────────────────────────────────
+  overlayCvs.addEventListener('mousemove', e => {
+    if (manualMode) return;
+    const pt = canvasPt(e);
+    if (drag) {
+      drag.card.corners[drag.cornerIdx] = pt;
+      renderOverlay();
+      return;
+    }
+    // Hover cursor
+    const activeCard = S.allCards[S.currentCardIdx]?.card;
+    if (activeCard) {
+      const near = activeCard.corners.some(c => Math.hypot(pt.x-c.x, pt.y-c.y) < 14);
+      overlayCvs.style.cursor = near ? 'grab' : 'default';
+    }
+  });
+
+  overlayCvs.addEventListener('mousedown', e => {
+    if (manualMode) return;
+    const pt = canvasPt(e);
+    const activeCard = S.allCards[S.currentCardIdx]?.card;
+
+    // Try to grab a corner handle
+    if (activeCard) {
+      for (let i = 0; i < activeCard.corners.length; i++) {
+        const c = activeCard.corners[i];
+        if (Math.hypot(pt.x-c.x, pt.y-c.y) < 16) {
+          drag = {cornerIdx: i, card: activeCard};
+          overlayCvs.style.cursor = 'grabbing';
+          return;
+        }
+      }
+    }
+
+    // Click on a different card badge to select it
+    const cards = S.photoCards[S.currentPhotoIdx] || [];
+    for (let i = 0; i < cards.length; i++) {
+      const card = cards[i];
+      const cx = card.corners.reduce((s,p)=>s+p.x,0)/4;
+      const cy = card.corners.reduce((s,p)=>s+p.y,0)/4;
+      if (Math.hypot(pt.x-cx, pt.y-cy) < 22) {
+        const idx = S.allCards.findIndex(a => a.card === card);
+        if (idx >= 0) { S.currentCardIdx = idx; showPanel(); }
+        return;
+      }
+    }
+  });
+
+  overlayCvs.addEventListener('mouseup', async () => {
+    if (!drag) return;
+    overlayCvs.style.cursor = 'default';
+    const card = drag.card;
+    drag = null;
+    await redewarpCard(card, S.photos[S.currentPhotoIdx].dataUrl);
+    showPanel();
+  });
+
+  overlayCvs.addEventListener('mouseleave', () => {
+    if (drag) { drag = null; overlayCvs.style.cursor = 'default'; }
+  });
+
+  // ── Manual crop tool ───────────────────────────────────────────────────────
+  addManualBtn.addEventListener('click', () => {
+    if (manualMode) return;
+    manualMode = true;
+    addManualBtn.textContent = '(drawing — drag to crop)';
+    overlayCvs.style.cursor = 'crosshair';
+    overlayCvs.style.pointerEvents = 'auto';
+  });
+
+  overlayCvs.addEventListener('mousedown', e => {
+    if (!manualMode) return;
+    manualStart = canvasPt(e);
+  });
+
+  overlayCvs.addEventListener('mousemove', e => {
+    if (!manualMode || !manualStart) return;
+    const pt = canvasPt(e);
+    renderOverlay();
+    const ctx = overlayCvs.getContext('2d');
+    ctx.strokeStyle = '#f39c12'; ctx.lineWidth = 2;
+    ctx.setLineDash([8,4]);
+    ctx.strokeRect(manualStart.x, manualStart.y, pt.x-manualStart.x, pt.y-manualStart.y);
+    ctx.setLineDash([]);
+  });
+
+  overlayCvs.addEventListener('mouseup', async e => {
+    if (!manualMode || !manualStart) return;
+    const pt = canvasPt(e);
+    const x1 = Math.min(manualStart.x, pt.x), y1 = Math.min(manualStart.y, pt.y);
+    const x2 = Math.max(manualStart.x, pt.x), y2 = Math.max(manualStart.y, pt.y);
+    manualStart = null;
+    manualMode = false;
+    addManualBtn.textContent = '+ Add card manually';
+    overlayCvs.style.cursor = 'default';
+    overlayCvs.style.pointerEvents = 'none';
+
+    if ((x2-x1) < 20 || (y2-y1) < 10) return;
+
+    const corners = [{x:x1,y:y1},{x:x2,y:y1},{x:x2,y:y2},{x:x1,y:y2}];
+    const cropC = document.createElement('canvas');
+    cropC.width = x2-x1; cropC.height = y2-y1;
+    const tmp = await loadImg(S.photos[S.currentPhotoIdx].dataUrl);
+    cropC.getContext('2d').drawImage(tmp, x1, y1, x2-x1, y2-y1, 0, 0, x2-x1, y2-y1);
+
+    if (!S.photoCards[S.currentPhotoIdx]) S.photoCards[S.currentPhotoIdx] = [];
+    S.photoCards[S.currentPhotoIdx].push({corners, cropCanvas: cropC, accepted: true, area: (x2-x1)*(y2-y1), isManual: true});
+    rebuildFlat();
+    S.currentCardIdx = S.allCards.length - 1;
+    showPanel();
+  });
+
+  // ── Photo nav ──────────────────────────────────────────────────────────────
+  prevPhotoBtn.addEventListener('click', async () => {
+    if (S.currentPhotoIdx <= 0) return;
+    await loadPhoto(S.currentPhotoIdx - 1);
+    jumpToPhotoCards(S.currentPhotoIdx);
+  });
+  nextPhotoBtn.addEventListener('click', async () => {
+    if (S.currentPhotoIdx >= S.photos.length - 1) return;
+    await loadPhoto(S.currentPhotoIdx + 1);
+    jumpToPhotoCards(S.currentPhotoIdx);
+  });
+
+  function jumpToPhotoCards(pIdx) {
+    const idx = S.allCards.findIndex(a => a.photoIdx === pIdx);
+    S.currentCardIdx = idx >= 0 ? idx : S.currentCardIdx;
+    showPanel();
+  }
+
+  // ── Card nav ───────────────────────────────────────────────────────────────
+  prevCardBtn.addEventListener('click', () => {
+    if (S.currentCardIdx > 0) { S.currentCardIdx--; maybeLoadPhotoForCard(); showPanel(); }
+  });
+  nextCardBtn.addEventListener('click', () => {
+    if (S.currentCardIdx < S.allCards.length - 1) { S.currentCardIdx++; maybeLoadPhotoForCard(); showPanel(); }
+  });
+
+  async function maybeLoadPhotoForCard() {
+    const item = S.allCards[S.currentCardIdx];
+    if (item && item.photoIdx !== S.currentPhotoIdx) await loadPhoto(item.photoIdx);
+  }
+
+  // ── Include / Skip ─────────────────────────────────────────────────────────
+  includeCardBtn.addEventListener('click', () => {
+    const item = S.allCards[S.currentCardIdx]; if (!item) return;
+    item.card.accepted = true; showPanel();
+  });
+  skipCardBtn.addEventListener('click', () => {
+    const item = S.allCards[S.currentCardIdx]; if (!item) return;
+    item.card.accepted = false; showPanel();
+  });
+
+  // ── Confirm → trigger OCR ─────────────────────────────────────────────────
+  confirmCardsBtn.addEventListener('click', () => {
+    const accepted = S.allCards.filter(a => a.card.accepted).map(a => a.card);
+    if (!accepted.length) return;
+    runOCRBatch(accepted);
+  });
+
+  // ── Boot: load first photo + detect ───────────────────────────────────────
+  async function processPhoto(idx) {
+    $('detLoadMsg').textContent = `Scanning photo ${idx+1}…`;
+    try {
+      await loadOpenCV();
+      const img = await loadImg(S.photos[idx].dataUrl);
+      const cards = detectCards(img);
+      S.photoCards[idx] = cards.map(c => ({...c, accepted: !c.isFallback}));
+      const low = cards.filter(c => (c.confidence||0) < 2).length;
+      if (cards.length === 1 && cards[0].isFallback) showToast('No card edges found — draw manually');
+      else if (low) showToast(`${low} low-confidence border${low>1?'s':''} — verify`);
+    } catch(err) {
+      console.warn('Detect error:', err);
+      S.photoCards[idx] = [];
+    }
+    rebuildFlat();
+    if (idx === S.currentPhotoIdx) showPanel();
+  }
+
+  loadPhoto(0).then(() => {
+    processPhoto(0);
+    for (let i = 1; i < S.photos.length; i++)
+      setTimeout(() => processPhoto(i), 400 * i);
+  });
+}
+
+// ── Tesseract / OCR ───────────────────────────────────────────────────────────
+let tWorker = null;
+
+async function loadTesseract() {
+  if (window.Tesseract) return;
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/tesseract.js@5/dist/tesseract.min.js';
+    s.onload = res; s.onerror = () => rej(new Error('Tesseract load failed'));
+    document.head.appendChild(s);
+  });
+}
+
+async function ensureTesseract(onProgress) {
+  await loadTesseract();
+  if (!tWorker) {
+    if (onProgress) onProgress('Loading language model…');
+    tWorker = await Tesseract.createWorker('eng+chi_sim', 1, {
+      logger: m => { if (m.status === 'recognizing text' && onProgress) onProgress(null, m.progress); }
+    });
+  }
+}
+
+async function runOCR(canvas) {
+  const { data } = await tWorker.recognize(canvas);
+  return { text: data.text, words: data.words || [] };
+}
+
+async function runOCRBatch(cards) {
+  showScreen('screen-processing');
+  setCrumb('OCR Processing');
+  $('progFill').style.width = '0%';
+  $('procMsg').textContent = 'Initialising recognition engine…';
+
+  try {
+    await ensureTesseract(msg => { if (msg) $('procMsg').textContent = msg; });
+  } catch(err) {
+    showToast('Tesseract load failed — ' + err.message, 5000);
+    showScreen('screen-detect');
+    return;
+  }
+
+  S.ocrResults = [];
+  for (let i = 0; i < cards.length; i++) {
+    $('procMsg').textContent = `Processing card ${i+1} of ${cards.length}…`;
+    $('progFill').style.width = ((i / cards.length) * 80) + '%';
+    try {
+      const { text } = await runOCR(cards[i].cropCanvas);
+      S.ocrResults.push({ fields: parseFields(text, cards[i].cropCanvas), cropCanvas: cards[i].cropCanvas });
+    } catch(e) {
+      S.ocrResults.push({ fields: emptyFields(), cropCanvas: cards[i].cropCanvas });
+    }
+  }
+
+  $('progFill').style.width = '100%';
+  $('procMsg').textContent = 'Done!';
+  await new Promise(r => setTimeout(r, 400));
+
+  S.contacts = [];
+  S.currentConfirmIdx = 0;
+  showScreen('screen-confirm');
+  setCrumb('Confirm');
+  renderConfirmCard(0);
+}
+
+// ── Field parser ──────────────────────────────────────────────────────────────
+function emptyFields() {
+  return { name:'', title:'', company:'', emails:[], phones:[], linkedin:'', website:'' };
+}
+
+function parseFields(text) {
+  const emails = [...(text.matchAll(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi))].map(m => m[0]);
+
+  const phones = [...(text.matchAll(/(\+?[\d\s\-(). ]{7,20})/g))]
+    .map(m => m[1].trim())
+    .filter(p => (p.match(/\d/g)||[]).length >= 6 && (p.match(/\d/g)||[]).length <= 15)
+    .filter(p => !emails.some(e => e.includes(p.replace(/\D/g,''))))
+    .filter((p,i,a) => a.indexOf(p) === i);
+
+  const linkedins = [...(text.matchAll(/linkedin\.com\/in\/[\w-]+/gi))].map(m => m[0]);
+
+  const websites = [...(text.matchAll(/(https?:\/\/)?[\w.-]+\.(com|co|io|net|org|hk|sg|cn)[/\w.-]*/gi))]
+    .map(m => m[0])
+    .filter(w => !linkedins.some(l => w.includes('linkedin')) && !emails.some(e => e.includes(w)));
+
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const titleKw = /\b(director|manager|vp|svp|evp|ceo|cfo|coo|cto|founder|partner|head|senior|associate|analyst|officer|president|principal)\b|总监|经理|总裁|主席|副总/i;
+  const companyKw = /\b(ltd|llc|pte|inc|corp|group|capital|fund|partners|holdings|ventures|advisors|advisory|asset|management)\b|有限公司|集团|基金/i;
+
+  let name = '', title = '', company = '';
+  for (const line of lines) {
+    if (emails.some(e => line.includes(e))) continue;
+    if (phones.some(p => line.includes(p.slice(0,5)))) continue;
+    if (websites.some(w => line.toLowerCase().includes(w.toLowerCase().slice(0,8)))) continue;
+
+    if (!title && titleKw.test(line)) { title = line; continue; }
+    if (!company && companyKw.test(line)) { company = line; continue; }
+    if (!name) {
+      const words = line.split(/\s+/).filter(Boolean);
+      const hasCJK = /[\u4e00-\u9fff]/.test(line);
+      if (hasCJK && line.replace(/\s/g,'').length >= 2 && line.replace(/\s/g,'').length <= 6) { name = line; continue; }
+      if (!hasCJK && words.length >= 2 && words.length <= 4 && /^[A-Z]/.test(line)) { name = line; continue; }
+    }
+  }
+
+  return {
+    name, title, company,
+    emails: emails.filter((e,i,a)=>a.indexOf(e)===i),
+    phones: phones.slice(0,5),
+    linkedin: linkedins[0] || '',
+    website: websites.filter(w=>!w.includes('linkedin'))[0] || '',
+  };
+}
+
+// ── Confirm screen ────────────────────────────────────────────────────────────
+function renderConfirmCard(idx) {
+  if (idx >= S.ocrResults.length) {
+    showScreen('screen-results');
+    setCrumb('Results');
+    renderResults();
+    return;
+  }
+  S.currentConfirmIdx = idx;
+  const { fields, cropCanvas } = S.ocrResults[idx];
+
+  // Card image
+  const canvas = $('confCanvas');
+  canvas.width  = cropCanvas.width;
+  canvas.height = cropCanvas.height;
+  canvas.getContext('2d').drawImage(cropCanvas, 0, 0);
+
+  $('confLbl').textContent = `Card ${idx+1} of ${S.ocrResults.length}`;
+  $('confPrev').disabled = idx === 0;
+  $('confNext').disabled = idx === S.ocrResults.length - 1;
+
+  // Fields
+  const body = $('confBody');
+  body.innerHTML = '';
+
+  const f = {...fields}; // editable copy
+
+  function textField(label, key, multiline) {
+    const row = document.createElement('div'); row.className = 'f-row';
+    const lbl = document.createElement('div'); lbl.className = 'f-label'; lbl.textContent = label;
+    if (multiline) {
+      const ta = document.createElement('textarea');
+      ta.className = 'f-input'; ta.rows = 2; ta.value = f[key] || '';
+      ta.oninput = () => { f[key] = ta.value; };
+      row.appendChild(lbl); row.appendChild(ta);
+    } else {
+      const inp = document.createElement('input');
+      inp.type = 'text'; inp.className = 'f-input'; inp.value = f[key] || '';
+      inp.oninput = () => { f[key] = inp.value; };
+      row.appendChild(lbl); row.appendChild(inp);
+    }
+    body.appendChild(row);
+    return row;
+  }
+
+  function chipField(label, key) {
+    const row = document.createElement('div'); row.className = 'f-row';
+    const lbl = document.createElement('div'); lbl.className = 'f-label'; lbl.textContent = label;
+    const wrap = document.createElement('div'); wrap.className = 'chip-wrap';
+
+    function renderChips() {
+      wrap.innerHTML = '';
+      (f[key]||[]).forEach((v, i) => {
+        const chip = document.createElement('span'); chip.className = 'chip';
+        chip.textContent = v;
+        const rm = document.createElement('button'); rm.textContent = '×';
+        rm.onclick = () => { f[key].splice(i,1); renderChips(); };
+        chip.appendChild(rm); wrap.appendChild(chip);
+      });
+      const inp = document.createElement('input');
+      inp.type = 'text'; inp.className = 'chip-in'; inp.placeholder = '+ add';
+      inp.onkeydown = e => {
+        if (e.key === 'Enter' && inp.value.trim()) {
+          if (!f[key]) f[key] = [];
+          f[key].push(inp.value.trim()); inp.value = ''; renderChips();
+        }
+        if (e.key === 'Backspace' && !inp.value && f[key]?.length) {
+          f[key].pop(); renderChips();
+        }
+      };
+      inp.onblur = () => {
+        if (inp.value.trim()) {
+          if (!f[key]) f[key] = [];
+          f[key].push(inp.value.trim()); inp.value = ''; renderChips();
+        }
+      };
+      wrap.appendChild(inp);
+      wrap.onclick = () => inp.focus();
+    }
+
+    renderChips();
+    row.appendChild(lbl); row.appendChild(wrap);
+    body.appendChild(row);
+  }
+
+  textField('Name', 'name');
+  textField('Title', 'title');
+  textField('Company', 'company');
+  chipField('Email', 'emails');
+  chipField('Phone', 'phones');
+  textField('LinkedIn', 'linkedin');
+  textField('Website', 'website');
+
+  // Nav
+  $('confPrev').onclick = () => renderConfirmCard(idx - 1);
+  $('confNext').onclick = () => renderConfirmCard(idx + 1);
+
+  $('confSkip').onclick = () => renderConfirmCard(idx + 1);
+  $('confSave').onclick = () => {
+    S.contacts.push({...f, cropCanvas});
+    renderConfirmCard(idx + 1);
+  };
+}
+
+function initConfirm() {
+  // Confirm screen wired dynamically via renderConfirmCard
+}
+
+// ── Results screen ────────────────────────────────────────────────────────────
+function renderResults() {
+  const n = S.contacts.length;
+  $('resTitle').textContent = `${n} contact${n===1?'':'s'} saved`;
+  const body = $('resBody');
+  body.innerHTML = '';
+
+  if (!n) {
+    const tr = document.createElement('tr');
+    tr.className = 'empty-row';
+    const td = document.createElement('td'); td.colSpan = 6; td.textContent = 'No contacts saved.';
+    tr.appendChild(td); body.appendChild(tr);
+    return;
+  }
+
+  S.contacts.forEach(c => {
+    const tr = document.createElement('tr');
+    const thumb = c.cropCanvas ? `<img class="thumb-img" src="${c.cropCanvas.toDataURL('image/jpeg',.7)}">` : '';
+    tr.innerHTML = `
+      <td>${thumb}</td>
+      <td>${esc(c.name)}</td>
+      <td>${esc(c.title)}</td>
+      <td>${esc(c.company)}</td>
+      <td>${(c.emails||[]).map(esc).join('<br>')}</td>
+      <td>${(c.phones||[]).map(esc).join('<br>')}</td>`;
+    body.appendChild(tr);
+  });
+}
+
+function esc(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function initResults() {
+  $('expCsvBtn').onclick  = exportCSV;
+  $('expJsonBtn').onclick = exportJSON;
+  $('expVcfBtn').onclick  = exportVCF;
+  $('startOverBtn').onclick = () => {
+    S.photos = []; S.photoCards = []; S.allCards = []; S.ocrResults = []; S.contacts = [];
+    $('photoGrid').innerHTML = ''; $('uploadAct').style.display = 'none';
+    if (tWorker) { tWorker.terminate(); tWorker = null; }
+    showScreen('screen-upload'); setCrumb('');
+  };
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+function exportCSV() {
+  const header = 'name,title,company,email,phone,linkedin,website';
+  const rows = S.contacts.map(c => [
+    c.name, c.title, c.company,
+    (c.emails||[]).join('|'), (c.phones||[]).join('|'),
+    c.linkedin, c.website,
+  ].map(v => `"${(v||'').replace(/"/g,'""')}"`).join(','));
+  const blob = new Blob([header + '\n' + rows.join('\n')], {type:'text/csv'});
+  dl(`name-cards-${todayStr()}.csv`, URL.createObjectURL(blob));
+}
+
+function exportJSON() {
+  const data = {
+    exported_at: new Date().toISOString(),
+    count: S.contacts.length,
+    contacts: S.contacts.map(c => ({
+      name: c.name, title: c.title, company: c.company,
+      emails: c.emails, phones: c.phones, linkedin: c.linkedin, website: c.website,
+    })),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  dl(`name-cards-${todayStr()}.json`, URL.createObjectURL(blob));
+}
+
+function exportVCF() {
+  const cards = S.contacts.map(c => {
+    const lines = ['BEGIN:VCARD','VERSION:3.0'];
+    if (c.name) lines.push(`FN:${c.name}`);
+    if (c.title || c.company) lines.push(`ORG:${c.company||''}`);
+    if (c.title) lines.push(`TITLE:${c.title}`);
+    (c.emails||[]).forEach(e => lines.push(`EMAIL:${e}`));
+    (c.phones||[]).forEach(p => lines.push(`TEL:${p}`));
+    if (c.linkedin) lines.push(`URL:https://${c.linkedin.startsWith('http') ? c.linkedin.replace(/^https?:\/\//,'') : c.linkedin}`);
+    else if (c.website) lines.push(`URL:${c.website}`);
+    lines.push('END:VCARD');
+    return lines.join('\r\n');
+  });
+  const blob = new Blob([cards.join('\r\n\r\n')], {type:'text/vcard'});
+  dl(`name-cards-${todayStr()}.vcf`, URL.createObjectURL(blob));
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+initUpload();
+initResults();
+</script>
+</body>
+</html>
