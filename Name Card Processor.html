@@ -60,6 +60,14 @@ main{flex:1;overflow:hidden}
 .det-crop canvas,.det-crop img{max-width:100%;max-height:200px;display:block}
 .conf-badge{font-size:12px;padding:2px 0}
 .det-btns{display:flex;gap:8px}
+.adj-section{border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:7px}
+.adj-label{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.adj-rotate{display:flex;align-items:center;gap:4px}
+.adj-btn{padding:3px 7px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--bg);cursor:pointer;color:var(--text);font-family:inherit;flex-shrink:0;line-height:1.4}
+.adj-btn:hover{border-color:var(--accent);color:var(--accent)}
+.rot-slider{flex:1;accent-color:var(--accent);min-width:0}
+.adj-angle{font-size:11px;color:var(--muted);text-align:center}
+.adj-actions{display:flex;gap:6px}
 
 /* ── Processing ── */
 #screen-processing{align-items:center;justify-content:center;gap:16px}
@@ -180,6 +188,21 @@ tr:last-child td{border-bottom:none}
             <div class="det-btns">
               <button class="btn btn-outline" id="skipCardBtn" style="flex:1">Skip</button>
               <button class="btn btn-primary" id="includeCardBtn" style="flex:1">✓ Include</button>
+            </div>
+            <div class="adj-section">
+              <div class="adj-label">Adjust crop</div>
+              <div class="adj-rotate">
+                <button class="adj-btn" id="rot90ccw" title="Rotate 90° CCW">↺90°</button>
+                <button class="adj-btn" id="rot15ccw" title="Rotate 15° CCW">↺15°</button>
+                <input type="range" id="rotSlider" min="-45" max="45" value="0" step="0.5" class="rot-slider">
+                <button class="adj-btn" id="rot15cw" title="Rotate 15° CW">↻15°</button>
+                <button class="adj-btn" id="rot90cw" title="Rotate 90° CW">↻90°</button>
+              </div>
+              <div class="adj-angle" id="adjAngle">Fine: 0°  ·  Total: 0°</div>
+              <div class="adj-actions">
+                <button class="btn btn-outline" id="cropModeBtn" style="flex:1">✂ Crop</button>
+                <button class="btn btn-ghost" id="resetAdjBtn">↩ Reset</button>
+              </div>
             </div>
           </div>
           <div id="detEmpty" style="display:none;color:var(--muted);font-size:13px;text-align:center;padding:24px">
@@ -347,9 +370,11 @@ function detectCards(imageEl) {
   const cards = merged.map(m => {
     const corners = m.corners.map(c => ({x: c.x / scale, y: c.y / scale}));
     const ordered = orderCorners(corners);
+    const cropCanvas = dewarp(srcFull, ordered, fullW, fullH);
     return {
       corners: ordered,
-      cropCanvas: dewarp(srcFull, ordered, fullW, fullH),
+      cropCanvas,
+      baseCanvas: cropCanvas,
       area: m.area / (scale * scale),
       confidence: m.confidence,
       sources: [...m.sources],
@@ -368,7 +393,7 @@ function detectCards(imageEl) {
     const tmp = cv.imread(imageEl); cv.imshow(fc, tmp); tmp.delete();
     return [{
       corners: [{x:0,y:0},{x:fullW-1,y:0},{x:fullW-1,y:fullH-1},{x:0,y:fullH-1}],
-      cropCanvas: fc, area: fullW*fullH, confidence: 0, sources: [], isFallback: true,
+      cropCanvas: fc, baseCanvas: fc, area: fullW*fullH, confidence: 0, sources: [], isFallback: true,
     }];
   }
   return cards;
@@ -518,8 +543,43 @@ async function redewarpCard(card, dataUrl) {
   const img = await loadImg(dataUrl);
   const srcMat = cv.imread(img);
   card.corners = orderCorners(card.corners);
-  card.cropCanvas = dewarp(srcMat, card.corners, srcMat.cols, srcMat.rows);
+  const newCanvas = dewarp(srcMat, card.corners, srcMat.cols, srcMat.rows);
+  card.cropCanvas = newCanvas;
+  card.baseCanvas = newCanvas;
+  card.rotation90 = 0; card.rotationFine = 0; card.cropRect = null;
   srcMat.delete();
+}
+
+// ── Image adjustment helpers ──────────────────────────────────────────────────
+function rotateCanvas(canvas, degrees) {
+  const rad = degrees * Math.PI / 180;
+  const w = canvas.width, h = canvas.height;
+  const sin = Math.abs(Math.sin(rad)), cos = Math.abs(Math.cos(rad));
+  const nw = Math.ceil(w * cos + h * sin);
+  const nh = Math.ceil(w * sin + h * cos);
+  const out = document.createElement('canvas');
+  out.width = nw; out.height = nh;
+  const ctx = out.getContext('2d');
+  ctx.translate(nw / 2, nh / 2);
+  ctx.rotate(rad);
+  ctx.drawImage(canvas, -w / 2, -h / 2);
+  return out;
+}
+
+function applyAdjustments(card) {
+  if (!card.baseCanvas) return;
+  let result = card.baseCanvas;
+  const totalRot = (card.rotation90 || 0) + (card.rotationFine || 0);
+  if (Math.abs(totalRot) > 0.05) result = rotateCanvas(card.baseCanvas, totalRot);
+  if (card.cropRect) {
+    const {x, y, w, h} = card.cropRect;
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(w));
+    c.height = Math.max(1, Math.round(h));
+    c.getContext('2d').drawImage(result, x, y, w, h, 0, 0, c.width, c.height);
+    result = c;
+  }
+  card.cropCanvas = result;
 }
 
 // ── Upload screen ─────────────────────────────────────────────────────────────
@@ -598,10 +658,17 @@ function initDetect() {
   const includeCardBtn = $('includeCardBtn');
   const confirmCardsBtn = $('confirmCardsBtn');
   const addManualBtn = $('addManualBtn');
+  const rotSlider   = $('rotSlider');
+  const adjAngle    = $('adjAngle');
+  const cropModeBtn = $('cropModeBtn');
+  const resetAdjBtn = $('resetAdjBtn');
 
   let drag = null;   // {cornerIdx, card}
   let manualMode = false;
   let manualStart = null;
+  let cropActive = false;
+  let cropStart = null;
+  let cropDispCanvas = null;
 
   // Sync overlay canvas to sit exactly on the rendered image
   function syncCanvas() {
@@ -724,18 +791,14 @@ function initDetect() {
     prevCardBtn.disabled = S.currentCardIdx === 0;
     nextCardBtn.disabled = S.currentCardIdx === S.allCards.length - 1;
 
-    // Crop preview
-    detCrop.innerHTML = '';
-    if (item.card.cropCanvas) {
-      const c = document.createElement('canvas');
-      c.width  = item.card.cropCanvas.width;
-      c.height = item.card.cropCanvas.height;
-      c.getContext('2d').drawImage(item.card.cropCanvas, 0, 0);
-      detCrop.appendChild(c);
-    }
+    const card = item.card;
+
+    // Crop preview + sync adjustment controls
+    refreshCropPreview();
+    rotSlider.value = card.rotationFine || 0;
+    updateAngleDisplay(card);
 
     // Confidence badge
-    const card = item.card;
     if (card.isFallback) {
       detBadge.textContent = 'No card detected — showing full photo';
       detBadge.style.color = 'var(--warn)';
@@ -866,7 +929,7 @@ function initDetect() {
     cropC.getContext('2d').drawImage(tmp, x1, y1, x2-x1, y2-y1, 0, 0, x2-x1, y2-y1);
 
     if (!S.photoCards[S.currentPhotoIdx]) S.photoCards[S.currentPhotoIdx] = [];
-    S.photoCards[S.currentPhotoIdx].push({corners, cropCanvas: cropC, accepted: true, area: (x2-x1)*(y2-y1), isManual: true});
+    S.photoCards[S.currentPhotoIdx].push({corners, cropCanvas: cropC, baseCanvas: cropC, accepted: true, area: (x2-x1)*(y2-y1), isManual: true});
     rebuildFlat();
     S.currentCardIdx = S.allCards.length - 1;
     showPanel();
@@ -911,6 +974,128 @@ function initDetect() {
   skipCardBtn.addEventListener('click', () => {
     const item = S.allCards[S.currentCardIdx]; if (!item) return;
     item.card.accepted = false; showPanel();
+  });
+
+  // ── Adjustment helpers ────────────────────────────────────────────────────
+  function getActiveCard() { return S.allCards[S.currentCardIdx]?.card; }
+
+  function refreshCropPreview() {
+    detCrop.innerHTML = '';
+    cropActive = false; cropStart = null;
+    cropModeBtn.textContent = '✂ Crop';
+    const card = getActiveCard();
+    if (!card?.cropCanvas) return null;
+    const c = document.createElement('canvas');
+    c.width = card.cropCanvas.width;
+    c.height = card.cropCanvas.height;
+    c.getContext('2d').drawImage(card.cropCanvas, 0, 0);
+    detCrop.appendChild(c);
+    cropDispCanvas = c;
+    return c;
+  }
+
+  function updateAngleDisplay(card) {
+    if (!card) { adjAngle.textContent = 'Fine: 0°  ·  Total: 0°'; return; }
+    const fine = card.rotationFine || 0;
+    const r90  = card.rotation90  || 0;
+    adjAngle.textContent = `Fine: ${fine.toFixed(1)}°  ·  Total: ${(r90 + fine).toFixed(1)}°`;
+  }
+
+  function doRotate(deg) {
+    const card = getActiveCard(); if (!card) return;
+    if (Math.abs(deg) >= 45) {
+      card.rotation90 = (card.rotation90 || 0) + deg;
+    } else {
+      card.rotationFine = (card.rotationFine || 0) + deg;
+      // clamp fine to ±180
+      card.rotationFine = Math.max(-180, Math.min(180, card.rotationFine));
+    }
+    card.cropRect = null;
+    rotSlider.value = Math.max(-45, Math.min(45, card.rotationFine || 0));
+    applyAdjustments(card);
+    refreshCropPreview();
+    updateAngleDisplay(card);
+  }
+
+  $('rot90ccw').addEventListener('click', () => doRotate(-90));
+  $('rot15ccw').addEventListener('click', () => doRotate(-15));
+  $('rot15cw').addEventListener('click',  () => doRotate(15));
+  $('rot90cw').addEventListener('click',  () => doRotate(90));
+
+  rotSlider.addEventListener('input', () => {
+    const card = getActiveCard(); if (!card) return;
+    card.rotationFine = parseFloat(rotSlider.value);
+    card.cropRect = null;
+    applyAdjustments(card);
+    refreshCropPreview();
+    updateAngleDisplay(card);
+  });
+
+  resetAdjBtn.addEventListener('click', () => {
+    const card = getActiveCard(); if (!card) return;
+    card.rotation90 = 0; card.rotationFine = 0; card.cropRect = null;
+    rotSlider.value = 0;
+    applyAdjustments(card);
+    refreshCropPreview();
+    updateAngleDisplay(card);
+  });
+
+  // ── Crop mode ──────────────────────────────────────────────────────────────
+  cropModeBtn.addEventListener('click', () => {
+    if (cropActive) {
+      cropActive = false; cropStart = null;
+      cropModeBtn.textContent = '✂ Crop';
+      refreshCropPreview(); return;
+    }
+    cropActive = true;
+    cropModeBtn.textContent = '✕ Cancel';
+    cropDispCanvas = refreshCropPreview();
+    if (cropDispCanvas) cropDispCanvas.style.cursor = 'crosshair';
+  });
+
+  detCrop.addEventListener('mousedown', e => {
+    if (!cropActive || !cropDispCanvas) return;
+    const r = cropDispCanvas.getBoundingClientRect();
+    cropStart = {
+      x: (e.clientX - r.left) * (cropDispCanvas.width / r.width),
+      y: (e.clientY - r.top)  * (cropDispCanvas.height / r.height),
+    };
+  });
+
+  detCrop.addEventListener('mousemove', e => {
+    if (!cropActive || !cropStart || !cropDispCanvas) return;
+    const r  = cropDispCanvas.getBoundingClientRect();
+    const px = (e.clientX - r.left) * (cropDispCanvas.width / r.width);
+    const py = (e.clientY - r.top)  * (cropDispCanvas.height / r.height);
+    const card = getActiveCard();
+    const ctx  = cropDispCanvas.getContext('2d');
+    ctx.clearRect(0, 0, cropDispCanvas.width, cropDispCanvas.height);
+    if (card?.cropCanvas) ctx.drawImage(card.cropCanvas, 0, 0);
+    const x = Math.min(cropStart.x, px), y = Math.min(cropStart.y, py);
+    const w = Math.abs(px - cropStart.x),  h = Math.abs(py - cropStart.y);
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(0, 0, cropDispCanvas.width, cropDispCanvas.height);
+    ctx.clearRect(x, y, w, h);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+    ctx.setLineDash([4,3]); ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
+    ctx.restore();
+  });
+
+  detCrop.addEventListener('mouseup', e => {
+    if (!cropActive || !cropStart || !cropDispCanvas) return;
+    const r  = cropDispCanvas.getBoundingClientRect();
+    const px = (e.clientX - r.left) * (cropDispCanvas.width / r.width);
+    const py = (e.clientY - r.top)  * (cropDispCanvas.height / r.height);
+    const x  = Math.min(cropStart.x, px), y = Math.min(cropStart.y, py);
+    const w  = Math.abs(px - cropStart.x), h = Math.abs(py - cropStart.y);
+    cropStart = null; cropActive = false;
+    cropModeBtn.textContent = '✂ Crop';
+    const card = getActiveCard();
+    if (!card || w < 10 || h < 10) { refreshCropPreview(); return; }
+    card.cropRect = {x, y, w, h};
+    applyAdjustments(card);
+    refreshCropPreview();
   });
 
   // ── Confirm → trigger OCR ─────────────────────────────────────────────────
