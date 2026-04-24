@@ -267,18 +267,19 @@ input,textarea { font: inherit; }
 .badge-blue { background: var(--blue-bg); color: #2563eb; }
 .ocr-running { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); padding: 6px 12px; }
 
-/* ── Debug log ── */
-.debug-panel { border-top: 1px solid var(--border); flex-shrink: 0; }
+/* ── Debug log footer ── */
+.debug-panel { border-top: 2px solid #2a2a3e; background: #0d1117; }
 .debug-panel summary {
-  padding: 5px 12px; font-size: 11px; color: var(--muted); cursor: pointer;
-  user-select: none; list-style: none; display: flex; align-items: center; gap: 4px;
+  padding: 5px 14px; font-size: 11px; font-weight: 600; color: #8b949e; cursor: pointer;
+  user-select: none; list-style: none; display: flex; align-items: center; gap: 6px;
+  background: #161b22; border-bottom: 1px solid #30363d;
 }
 .debug-panel summary::-webkit-details-marker { display: none; }
-.debug-panel summary::before { content: '▶'; font-size: 9px; transition: transform .15s; }
-.debug-panel[open] summary::before { transform: rotate(90deg); }
+.debug-panel summary::after { content: '▼'; font-size: 9px; margin-left: 4px; transition: transform .15s; }
+.debug-panel[open] summary::after { transform: rotate(180deg); }
 .debug-pre {
-  margin: 0; padding: 8px 12px 10px; font: 11px/1.5 'SF Mono', 'Fira Code', monospace;
-  background: #0d1117; color: #c9d1d9; height: 140px; overflow-y: auto;
+  margin: 0; padding: 8px 14px 10px; font: 11px/1.6 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  background: #0d1117; color: #c9d1d9; height: 120px; overflow-y: auto;
   white-space: pre-wrap; word-break: break-all;
 }
 </style>
@@ -291,6 +292,7 @@ input,textarea { font: inherit; }
 <div id="app">
   <header id="app-header">
     <div class="hdr-title">Name Card Processor</div>
+    <span style="font-size:10px;color:#555;font-weight:500;letter-spacing:.02em;background:#2a2a3e;padding:2px 6px;border-radius:4px">v1.2</span>
     <span class="hdr-sep">·</span>
     <div class="hdr-status" id="hdr-status"></div>
     <div class="hdr-right">
@@ -352,10 +354,6 @@ input,textarea { font: inherit; }
             <button class="btn btn-primary btn-sm btn-full" id="btn-ocr-card" disabled>▶ Run OCR on selected card</button>
             <button class="btn btn-sm btn-full" id="btn-ocr-all" disabled>▶▶ Run OCR on all accepted cards</button>
           </div>
-          <details class="debug-panel" id="debug-panel">
-            <summary>Debug log</summary>
-            <pre class="debug-pre" id="debug-pre"></pre>
-          </details>
         </div>
 
       </div>
@@ -388,6 +386,12 @@ input,textarea { font: inherit; }
     </section>
 
   </div>
+
+  <!-- ── Debug log footer — always visible ──────────────────────────────── -->
+  <details class="debug-panel" id="debug-panel" style="flex-shrink:0">
+    <summary>🪲 Debug log <span id="debug-count" style="margin-left:6px;font-size:10px;color:#666"></span></summary>
+    <pre class="debug-pre" id="debug-pre"></pre>
+  </details>
 </div>
 
 <script>
@@ -418,15 +422,19 @@ function toast(msg, dur = 3000) {
   toastTimer = setTimeout(() => el.classList.remove('show'), dur);
 }
 
+let dbgCount = 0;
 function dbg(msg) {
   const pre = $('debug-pre');
   if (!pre) { console.log(msg); return; }
+  dbgCount++;
   const t = new Date().toISOString().slice(11, 22);
   pre.textContent += `[${t}] ${msg}\n`;
   pre.scrollTop = pre.scrollHeight;
-  // Auto-open log on first message
+  // Auto-open log and update count badge
   const panel = $('debug-panel');
   if (panel && !panel.open) panel.open = true;
+  const cnt = $('debug-count');
+  if (cnt) cnt.textContent = `(${dbgCount})`;
   console.log('[NCP]', msg);
 }
 
@@ -451,37 +459,104 @@ let cvReady = false;
 let cvLoading = false;
 let cvCallbacks = [];
 
+const OPENCV_BASE = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.8.0-release.1/dist/';
+
 function ensureCV() {
   return new Promise((res, rej) => {
     if (cvReady) return res();
     cvCallbacks.push({ res, rej });
     if (cvLoading) return;
     cvLoading = true;
+
     setDetStatus('<span class="spinner"></span> Loading OpenCV…', false);
-    dbg('Loading OpenCV.js (jsDelivr @techstark/opencv-js 4.8.0)…');
-    const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.8.0-release.1/dist/opencv.js';
-    s.async = true;
-    s.onerror = (e) => {
-      dbg('ERROR: OpenCV script failed to load — ' + (e.message || 'network/CORS error'));
-      cvCallbacks.forEach(cb => cb.rej(new Error('OpenCV load failed')));
+    dbg('ensureCV: setting up Module.locateFile for WASM path…');
+
+    // CRITICAL: set locateFile BEFORE loading the script so Emscripten
+    // can find opencv_js.wasm even when loaded via a dynamic <script> tag
+    // (document.currentScript is null in that case, breaking auto-detection)
+    window.Module = window.Module || {};
+    window.Module.locateFile = (path) => {
+      const url = OPENCV_BASE + path;
+      dbg(`locateFile: ${path} → ${url}`);
+      return url;
     };
+
+    let settled = false;
+    const cvTimeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      dbg('ERROR: OpenCV WASM init timed out after 20 s — check network tab for .wasm load failure');
+      const err = new Error('OpenCV timed out');
+      cvCallbacks.forEach(cb => cb.rej(err)); cvCallbacks = []; cvLoading = false;
+    }, 20000);
+
+    const doResolve = (label) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(cvTimeout);
+      dbg(`OpenCV WASM ready ✓ (via ${label})`);
+      cvReady = true;
+      cvCallbacks.forEach(cb => cb.res()); cvCallbacks = [];
+    };
+    const doReject = (label, err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(cvTimeout);
+      dbg(`OpenCV FAILED (${label}): ${err.message}`);
+      cvCallbacks.forEach(cb => cb.rej(err)); cvCallbacks = []; cvLoading = false;
+    };
+
+    dbg(`ensureCV: loading script from ${OPENCV_BASE}opencv.js`);
+    const s = document.createElement('script');
+    s.src = OPENCV_BASE + 'opencv.js';
+    s.async = true;
+    s.onerror = () => doReject('script.onerror', new Error('OpenCV script failed to load (network/CORS)'));
     document.head.appendChild(s);
+
     s.onload = () => {
-      dbg('Script tag loaded — checking WASM state…');
-      if (typeof cv === 'undefined') {
-        dbg('ERROR: cv global is undefined after script load');
-        cvCallbacks.forEach(cb => cb.rej(new Error('cv undefined'))); return;
-      }
-      let resolved = false;
-      const resolve = () => {
-        if (resolved) return; resolved = true;
-        dbg('OpenCV WASM ready ✓');
-        cvReady = true; cvCallbacks.forEach(cb => cb.res()); cvCallbacks = [];
+      dbg(`Script loaded — typeof cv="${typeof cv}", typeof Module="${typeof Module}"`);
+
+      const tryCvReady = (cvObj) => {
+        // Handle promise-based cv (some builds expose cv as a Promise)
+        if (cvObj && typeof cvObj.then === 'function') {
+          dbg('cv is Promise-based — awaiting resolution…');
+          cvObj.then(instance => {
+            window.cv = instance;
+            dbg('Promise cv resolved, cv object available');
+            doResolve('cv.then');
+          }).catch(e => doReject('cv.then reject', e));
+          return;
+        }
+        // Classic Emscripten module — check if WASM already ready
+        dbg(`cv is module object — checking WASM (cv.Mat exists: ${typeof cvObj.Mat})`);
+        // Set onRuntimeInitialized on both Module and cv in case they differ
+        const cb = () => doResolve('onRuntimeInitialized');
+        window.Module.onRuntimeInitialized = cb;
+        if (cvObj !== window.Module) cvObj.onRuntimeInitialized = cb;
+        try {
+          const t = new cvObj.Mat();
+          t.delete();
+          dbg('cv.Mat() OK — WASM already initialised');
+          doResolve('cv.Mat() test');
+        } catch(e) {
+          dbg(`cv.Mat() threw (${e.message}) — waiting for onRuntimeInitialized…`);
+        }
       };
-      cv['onRuntimeInitialized'] = resolve;
-      try { const t = new cv.Mat(); t.delete(); dbg('cv.Mat() succeeded — already initialised'); resolve(); }
-      catch(e) { dbg('cv.Mat() threw — waiting for onRuntimeInitialized callback…'); }
+
+      if (typeof cv !== 'undefined') {
+        tryCvReady(cv);
+      } else {
+        // cv might appear after a tick (module evaluation async in some builds)
+        dbg('cv undefined immediately after script load — retrying after 200 ms…');
+        setTimeout(() => {
+          if (typeof cv !== 'undefined') {
+            dbg(`cv appeared after delay: typeof cv="${typeof cv}"`);
+            tryCvReady(cv);
+          } else {
+            doReject('delayed check', new Error('cv global never defined'));
+          }
+        }, 200);
+      }
     };
   });
 }
@@ -654,56 +729,62 @@ async function detectCardsInPhoto(photoId) {
     return;
   }
 
-  // Load photo onto a canvas, resized to max 800px for fast detection
-  const img = photo._img;
-  const MAX_DET = 800;
-  const detScale = Math.min(1, MAX_DET / Math.max(photo.naturalW, photo.naturalH));
-  const detW = Math.round(photo.naturalW * detScale);
-  const detH = Math.round(photo.naturalH * detScale);
-  dbg(`detectCards: resize ${photo.naturalW}×${photo.naturalH} → ${detW}×${detH} (scale ${detScale.toFixed(3)})`);
-  const srcCanvas = document.createElement('canvas');
-  srcCanvas.width = detW; srcCanvas.height = detH;
-  srcCanvas.getContext('2d').drawImage(img, 0, 0, detW, detH);
+  try {
+    // Load photo onto a canvas, resized to max 800px for fast detection
+    const img = photo._img;
+    const MAX_DET = 800;
+    const detScale = Math.min(1, MAX_DET / Math.max(photo.naturalW, photo.naturalH));
+    const detW = Math.round(photo.naturalW * detScale);
+    const detH = Math.round(photo.naturalH * detScale);
+    dbg(`detectCards: resize ${photo.naturalW}×${photo.naturalH} → ${detW}×${detH} (scale ${detScale.toFixed(3)})`);
+    const srcCanvas = document.createElement('canvas');
+    srcCanvas.width = detW; srcCanvas.height = detH;
+    srcCanvas.getContext('2d').drawImage(img, 0, 0, detW, detH);
 
-  const srcMat = cv.imread(srcCanvas);
-  const grayMat = new cv.Mat();
-  cv.cvtColor(srcMat, grayMat, cv.COLOR_RGBA2GRAY);
-  srcMat.delete();
-  dbg(`detectCards: grayscale Mat ${grayMat.cols}×${grayMat.rows}`);
+    dbg('detectCards: cv.imread…');
+    const srcMat = cv.imread(srcCanvas);
+    const grayMat = new cv.Mat();
+    cv.cvtColor(srcMat, grayMat, cv.COLOR_RGBA2GRAY);
+    srcMat.delete();
+    dbg(`detectCards: grayscale Mat ${grayMat.cols}×${grayMat.rows}`);
 
-  let allBoxes = [];
-  for (let vi = 0; vi < VARIANTS.length; vi++) {
-    const variant = VARIANTS[vi];
-    setDetStatus(`<span class="spinner"></span> Detecting… variant ${vi+1}/${VARIANTS.length} (${variant})`, false);
-    dbg(`detectCards: variant ${vi+1}/${VARIANTS.length} — ${variant}`);
-    await new Promise(r => setTimeout(r, 0)); // yield to browser so UI updates
-    const vMat = applyVariant(grayMat, variant);
-    try {
-      const boxes = detectRectanglesFromMat(vMat, detW, detH);
-      dbg(`  → ${boxes.length} rect(s) found, confs: [${boxes.map(b=>b.conf.toFixed(2)).join(', ')}]`);
-      allBoxes.push(...boxes);
-    } catch(e) {
-      dbg(`  → variant ${variant} threw: ${e.message}`);
-    }
-    vMat.delete();
-    // Early exit: if first 3 variants already agree on ≥1 card with high confidence, skip slow ones
-    if (vi === 2) {
-      const early = wbfMerge(allBoxes, 3);
-      dbg(`detectCards: early-exit check after 3 variants — ${early.length} merged, top conf=${early[0]?.conf.toFixed(3) ?? 'n/a'}`);
-      if (early.length > 0 && early[0].conf > 0.6) {
-        dbg(`detectCards: early exit triggered (conf ${early[0].conf.toFixed(3)} > 0.6)`);
-        grayMat.delete();
-        const scaleBack = b => ({ ...b, corners: b.corners.map(p => ({ x: p.x/detScale, y: p.y/detScale })) });
-        finishDetection(photoId, wbfMerge(allBoxes, vi + 1).map(scaleBack)); // use actual variant count
-        return;
+    let allBoxes = [];
+    for (let vi = 0; vi < VARIANTS.length; vi++) {
+      const variant = VARIANTS[vi];
+      setDetStatus(`<span class="spinner"></span> Detecting… variant ${vi+1}/${VARIANTS.length} (${variant})`, false);
+      dbg(`detectCards: variant ${vi+1}/${VARIANTS.length} — ${variant}`);
+      await new Promise(r => setTimeout(r, 0)); // yield to browser so UI updates
+      const vMat = applyVariant(grayMat, variant);
+      try {
+        const boxes = detectRectanglesFromMat(vMat, detW, detH);
+        dbg(`  → ${boxes.length} rect(s) found${boxes.length ? ', confs: [' + boxes.map(b=>b.conf.toFixed(2)).join(', ') + ']' : ''}`);
+        allBoxes.push(...boxes);
+      } catch(e) {
+        dbg(`  → variant ${variant} threw: ${e.message}`);
+      }
+      vMat.delete();
+      // Early exit: if first 3 variants already agree on ≥1 card with high confidence, skip slow ones
+      if (vi === 2) {
+        const early = wbfMerge(allBoxes, 3);
+        dbg(`detectCards: early-exit check — ${early.length} merged, top conf=${early[0]?.conf.toFixed(3) ?? 'n/a'}`);
+        if (early.length > 0 && early[0].conf > 0.6) {
+          dbg(`detectCards: early exit triggered (conf ${early[0].conf.toFixed(3)} > 0.6)`);
+          grayMat.delete();
+          const scaleBack = b => ({ ...b, corners: b.corners.map(p => ({ x: p.x/detScale, y: p.y/detScale })) });
+          finishDetection(photoId, wbfMerge(allBoxes, vi + 1).map(scaleBack));
+          return;
+        }
       }
     }
+    grayMat.delete();
+    const scaleBack = b => ({ ...b, corners: b.corners.map(p => ({ x: p.x/detScale, y: p.y/detScale })) });
+    const merged = wbfMerge(allBoxes, VARIANTS.length).map(scaleBack);
+    dbg(`detectCards: WBF merged → ${merged.length} card(s)${merged.length ? ', confs: [' + merged.map(b=>b.conf.toFixed(2)).join(', ') + ']' : ''}`);
+    finishDetection(photoId, merged);
+  } catch(e) {
+    dbg(`detectCards: UNCAUGHT ERROR — ${e.message}\n${e.stack?.split('\n').slice(0,3).join('\n')}`);
+    setDetStatus('⚠ Detection error — see debug log', true);
   }
-  grayMat.delete();
-  const scaleBack = b => ({ ...b, corners: b.corners.map(p => ({ x: p.x/detScale, y: p.y/detScale })) });
-  const merged = wbfMerge(allBoxes, VARIANTS.length).map(scaleBack);
-  dbg(`detectCards: WBF merged → ${merged.length} card(s), confs: [${merged.map(b=>b.conf.toFixed(2)).join(', ')}]`);
-  finishDetection(photoId, merged);
 }
 
 function finishDetection(photoId, merged) {
