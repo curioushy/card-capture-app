@@ -1,0 +1,1748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Name Card Processor</title>
+<style>
+/* ── Variables ── */
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --border: #e1e4e8;
+  --text: #1a1a2e;
+  --muted: #6b7280;
+  --accent: #1d6f42;
+  --accent-light: #e8f5ee;
+  --green: #22c55e;
+  --green-bg: #f0fdf4;
+  --red: #ef4444;
+  --red-bg: #fef2f2;
+  --blue: #3b82f6;
+  --blue-bg: #eff6ff;
+  --header: #1a1a2e;
+  --radius: 8px;
+  --radius-sm: 5px;
+  --shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+/* ── Reset ── */
+*,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+html,body { height: 100%; overflow: hidden; }
+body { font: 13px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: var(--text); background: var(--bg); }
+button { font: inherit; cursor: pointer; }
+input,textarea { font: inherit; }
+
+/* ── App shell ── */
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+#app-header {
+  flex-shrink: 0; height: 46px; background: var(--header); color: #fff;
+  display: flex; align-items: center; padding: 0 16px; gap: 12px;
+  user-select: none;
+}
+.hdr-title { font-size: 14px; font-weight: 600; letter-spacing: 0.03em; }
+.hdr-sep { color: #444; }
+.hdr-status { font-size: 11px; color: #888; }
+.hdr-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+/* ── Three-panel layout ── */
+.panels {
+  display: grid;
+  grid-template-columns: 300px 360px 1fr;
+  flex: 1; overflow: hidden;
+}
+
+.panel {
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--surface); border-right: 1px solid var(--border);
+}
+.panel:last-child { border-right: none; }
+
+.panel-head {
+  flex-shrink: 0; padding: 0 14px; height: 42px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+}
+.panel-head-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.panel-head-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+
+.panel-body { flex: 1; overflow-y: auto; }
+
+/* ── Buttons ── */
+.btn {
+  padding: 5px 11px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); font-size: 12px; transition: background .12s, border-color .12s;
+  white-space: nowrap;
+}
+.btn:disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
+.btn:hover:not(:disabled) { background: var(--bg); border-color: #aaa; }
+.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-primary:hover:not(:disabled) { background: #155e35; border-color: #155e35; }
+.btn-danger { background: var(--red); color: #fff; border-color: var(--red); }
+.btn-sm { padding: 3px 8px; font-size: 11px; }
+.btn-icon { padding: 4px 6px; font-size: 13px; border-radius: var(--radius-sm); border: 1px solid transparent; background: none; }
+.btn-icon:hover { background: var(--bg); border-color: var(--border); }
+.btn-full { width: 100%; }
+
+/* ── Upload zone ── */
+.upload-zone {
+  margin: 20px; border: 2px dashed var(--border); border-radius: var(--radius);
+  padding: 36px 20px; text-align: center; cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+.upload-zone.drag-over, .upload-zone:hover { border-color: var(--accent); background: var(--accent-light); }
+.upload-icon { font-size: 36px; margin-bottom: 10px; }
+.upload-label { color: var(--muted); line-height: 1.6; }
+.upload-sub { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+/* ── Photo strip ── */
+.photo-strip {
+  display: flex; gap: 6px; padding: 10px 12px;
+  overflow-x: auto; border-bottom: 1px solid var(--border);
+  background: var(--bg); flex-shrink: 0;
+}
+.thumb {
+  position: relative; flex-shrink: 0; width: 52px; height: 52px;
+  border-radius: 6px; overflow: hidden; cursor: pointer;
+  border: 2px solid transparent; transition: border-color .15s;
+}
+.thumb.active { border-color: var(--accent); }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb-del {
+  position: absolute; top: 1px; right: 1px; width: 15px; height: 15px;
+  background: rgba(0,0,0,.65); color: #fff; border-radius: 50%;
+  font-size: 9px; display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity .15s; cursor: pointer; border: none;
+}
+.thumb:hover .thumb-del { opacity: 1; }
+.thumb-add {
+  flex-shrink: 0; width: 52px; height: 52px; border-radius: 6px;
+  border: 2px dashed var(--border); display: flex; align-items: center;
+  justify-content: center; font-size: 22px; color: var(--muted); cursor: pointer;
+  transition: border-color .15s, color .15s;
+}
+.thumb-add:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Photo viewport ── */
+.photo-viewport { position: relative; width: 100%; flex-shrink: 0; }
+.photo-viewport img { width: 100%; display: block; user-select: none; -webkit-user-drag: none; }
+.photo-viewport canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+
+/* ── Detection status ── */
+.det-status {
+  flex-shrink: 0; padding: 5px 12px; font-size: 11px; color: var(--muted);
+  display: flex; align-items: center; gap: 6px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+.spinner {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid var(--border); border-top-color: var(--accent);
+  animation: spin .7s linear infinite; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Card list ── */
+.card-list { flex-shrink: 0; border-top: 1px solid var(--border); }
+.card-list-hd {
+  padding: 7px 12px 4px; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--muted);
+}
+.card-item {
+  display: flex; align-items: center; gap: 8px; padding: 5px 12px;
+  cursor: pointer; transition: background .12s; border-radius: 0;
+}
+.card-item:hover { background: var(--bg); }
+.card-item.active-card { background: var(--accent-light); }
+.card-badge {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--green); color: #fff; font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.card-badge.rejected { background: var(--red); }
+.card-badge.manual { background: var(--blue); }
+.card-label { flex: 1; font-size: 12px; }
+.card-ocr-status { font-size: 10px; color: var(--muted); }
+.card-btns { display: flex; gap: 3px; }
+
+/* ── Scan controls ── */
+.scan-controls {
+  flex-shrink: 0; padding: 10px 12px; border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.lang-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.lang-row input { margin: 0; }
+
+/* ── Rotate controls ── */
+.rot-controls {
+  flex-shrink: 0; padding: 8px 12px; border-top: 1px solid var(--border);
+  background: var(--bg); display: none;
+}
+.rot-controls.visible { display: block; }
+.rot-label { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 6px; }
+.rot-row { display: flex; align-items: center; gap: 4px; }
+.rot-row input[type=range] { flex: 1; }
+.rot-angle { font-size: 11px; color: var(--muted); min-width: 40px; text-align: right; }
+
+/* ── Tokens panel ── */
+.tokens-empty { padding: 40px 16px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.token-group { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.token-group-title { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 7px; }
+.token-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.token-chip {
+  padding: 3px 9px; border-radius: 20px; border: 1px solid var(--border);
+  font-size: 12px; cursor: grab; background: var(--surface); user-select: none;
+  transition: background .1s, border-color .1s; display: flex; align-items: center; gap: 4px;
+}
+.token-chip:active { cursor: grabbing; }
+.token-chip:hover { background: var(--accent-light); border-color: var(--accent); }
+.token-chip.assigned { background: var(--green-bg); border-color: var(--green); }
+.token-chip.src-active { background: var(--blue-bg); border-color: var(--blue); }
+.token-src { font-size: 9px; color: var(--muted); background: var(--bg); padding: 1px 4px; border-radius: 3px; }
+.token-lines { display: flex; flex-direction: column; gap: 4px; }
+.token-line {
+  padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+  font-size: 12px; cursor: grab; background: var(--surface); user-select: none;
+  transition: background .1s, border-color .1s; display: flex; align-items: center; justify-content: space-between;
+}
+.token-line:active { cursor: grabbing; }
+.token-line:hover { background: var(--accent-light); border-color: var(--accent); }
+.token-line.assigned { background: var(--green-bg); border-color: var(--green); }
+.token-line.src-active { background: var(--blue-bg); border-color: var(--blue); }
+.token-line-val { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Contacts panel ── */
+.contacts-empty { padding: 40px 16px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.contact-row {
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  cursor: pointer; transition: background .12s;
+}
+.contact-row:hover { background: var(--bg); }
+.contact-row.active-contact { background: var(--accent-light); }
+.contact-hd { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.contact-num {
+  width: 26px; height: 26px; border-radius: 50%; background: var(--accent);
+  color: #fff; font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.contact-name { font-weight: 500; font-size: 13px; }
+.contact-company { font-size: 11px; color: var(--muted); }
+.contact-fields { display: grid; grid-template-columns: 72px 1fr; gap: 2px 8px; }
+.cf-label { font-size: 11px; color: var(--muted); text-align: right; padding: 2px 0; align-self: start; padding-top: 4px; }
+.cf-val {
+  font-size: 12px; padding: 2px 6px; border-radius: 4px;
+  border: 1px solid transparent; min-height: 22px; outline: none;
+  transition: border-color .12s, background .12s;
+}
+.cf-val:hover { border-color: var(--border); background: var(--bg); }
+.cf-val:focus { border-color: var(--accent); background: var(--surface); }
+.cf-val.drop-ready { border: 1.5px dashed var(--accent); background: var(--accent-light); }
+.cf-val.drop-hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+.chip-list { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 0; }
+.chip {
+  padding: 2px 7px 2px 8px; border-radius: 20px; background: var(--bg);
+  border: 1px solid var(--border); font-size: 11px; display: flex; align-items: center; gap: 3px;
+}
+.chip-del { background: none; border: none; color: var(--muted); cursor: pointer; padding: 0; font-size: 12px; line-height: 1; }
+.chip-del:hover { color: var(--red); }
+.chip-add {
+  padding: 2px 8px; border-radius: 20px; background: none; border: 1px dashed var(--border);
+  font-size: 11px; color: var(--muted); cursor: pointer;
+}
+.chip-add:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Misc ── */
+.toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  background: #1a1a2e; color: #fff; padding: 9px 18px; border-radius: var(--radius);
+  font-size: 13px; z-index: 9999; opacity: 0; transition: opacity .2s; pointer-events: none;
+}
+.toast.show { opacity: 1; }
+.empty-state { padding: 40px 16px; text-align: center; color: var(--muted); font-size: 13px; }
+.badge { display: inline-block; padding: 1px 6px; border-radius: 10px; font-size: 10px; font-weight: 600; }
+.badge-green { background: var(--green-bg); color: #16a34a; }
+.badge-red { background: var(--red-bg); color: #dc2626; }
+.badge-blue { background: var(--blue-bg); color: #2563eb; }
+.ocr-running { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); padding: 6px 12px; }
+
+/* ── Debug log footer ── */
+.debug-panel { border-top: 2px solid #2a2a3e; background: #0d1117; }
+.debug-panel summary {
+  padding: 5px 14px; font-size: 11px; font-weight: 600; color: #8b949e; cursor: pointer;
+  user-select: none; list-style: none; display: flex; align-items: center; gap: 6px;
+  background: #161b22; border-bottom: 1px solid #30363d;
+}
+.debug-panel summary::-webkit-details-marker { display: none; }
+.debug-panel summary::after { content: '▼'; font-size: 9px; margin-left: 4px; transition: transform .15s; }
+.debug-panel[open] summary::after { transform: rotate(180deg); }
+.debug-pre {
+  margin: 0; padding: 8px 14px 10px; font: 11px/1.6 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  background: #0d1117; color: #c9d1d9; height: 120px; overflow-y: auto;
+  white-space: pre-wrap; word-break: break-all;
+}
+</style>
+</head>
+<body>
+
+<input type="file" id="fileInput" accept="image/*" multiple style="display:none">
+<div class="toast" id="toast"></div>
+
+<div id="app">
+  <header id="app-header">
+    <div class="hdr-title">Name Card Processor</div>
+    <span style="font-size:10px;color:#555;font-weight:500;letter-spacing:.02em;background:#2a2a3e;padding:2px 6px;border-radius:4px">v1.2</span>
+    <span class="hdr-sep">·</span>
+    <div class="hdr-status" id="hdr-status"></div>
+    <div class="hdr-right">
+      <button class="btn btn-sm" id="btn-clear-all" style="background:none;border-color:#444;color:#ccc">✕ Clear All</button>
+    </div>
+  </header>
+
+  <div class="panels">
+
+    <!-- ── Panel 1: Scan ──────────────────────────────── -->
+    <aside class="panel" id="panel-scan">
+      <div class="panel-head">
+        <span class="panel-head-title">Scan</span>
+        <div class="panel-head-right">
+          <button class="btn btn-sm" id="btn-redetect" style="display:none">↺ Re-detect</button>
+        </div>
+      </div>
+      <div class="panel-body" id="scan-body" style="display:flex;flex-direction:column;overflow:hidden;">
+
+        <!-- Upload zone -->
+        <div class="upload-zone" id="upload-zone">
+          <div class="upload-icon">📷</div>
+          <div class="upload-label">Drop images here or click to browse</div>
+          <div class="upload-sub">Paste with Cmd+V · Multiple files OK</div>
+        </div>
+
+        <!-- Scan content (hidden until photos loaded) -->
+        <div id="scan-content" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
+          <div class="photo-strip" id="photo-strip"></div>
+          <div style="flex:1;overflow-y:auto;" id="scan-scroll">
+            <div class="photo-viewport" id="photo-viewport">
+              <img id="active-photo" alt="" draggable="false">
+              <canvas id="overlay-canvas"></canvas>
+            </div>
+            <div class="det-status" id="det-status">Ready</div>
+            <div class="rot-controls" id="rot-controls">
+              <div class="rot-label">Rotate selected card</div>
+              <div class="rot-row">
+                <button class="btn btn-icon" id="rot-ccw90">↺90°</button>
+                <button class="btn btn-icon" id="rot-ccw15">↺15°</button>
+                <input type="range" id="rot-slider" min="-45" max="45" value="0" step="0.5">
+                <button class="btn btn-icon" id="rot-cw15">↻15°</button>
+                <button class="btn btn-icon" id="rot-cw90">↻90°</button>
+                <span class="rot-angle" id="rot-angle">0°</span>
+              </div>
+            </div>
+            <div class="card-list" id="card-list" style="display:none">
+              <div class="card-list-hd">Detected cards</div>
+              <div id="card-items"></div>
+              <div style="padding:6px 12px 8px">
+                <button class="btn btn-sm btn-full" id="btn-draw-card">+ Draw card manually</button>
+              </div>
+            </div>
+          </div>
+          <div class="scan-controls">
+            <label class="lang-row">
+              <input type="checkbox" id="use-cjk"> Include Chinese characters
+            </label>
+            <button class="btn btn-primary btn-sm btn-full" id="btn-ocr-card" disabled>▶ Run OCR on selected card</button>
+            <button class="btn btn-sm btn-full" id="btn-ocr-all" disabled>▶▶ Run OCR on all accepted cards</button>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- ── Panel 2: OCR Tokens ───────────────────────── -->
+    <section class="panel" id="panel-tokens">
+      <div class="panel-head">
+        <span class="panel-head-title">OCR Tokens</span>
+        <div class="panel-head-right" style="font-size:11px;color:var(--muted)">drag to assign →</div>
+      </div>
+      <div class="panel-body" id="tokens-body">
+        <div class="tokens-empty">Select a card in Panel 1<br>then run OCR to see tokens</div>
+      </div>
+    </section>
+
+    <!-- ── Panel 3: Contacts ─────────────────────────── -->
+    <section class="panel" id="panel-contacts">
+      <div class="panel-head">
+        <span class="panel-head-title">Contacts</span>
+        <div class="panel-head-right">
+          <button class="btn btn-sm" id="btn-csv">CSV</button>
+          <button class="btn btn-sm" id="btn-json">JSON</button>
+          <button class="btn btn-sm" id="btn-vcf">vCard</button>
+        </div>
+      </div>
+      <div class="panel-body" id="contacts-body">
+        <div class="contacts-empty">Contacts appear here after OCR runs</div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ── Debug log footer — always visible ──────────────────────────────── -->
+  <details class="debug-panel" id="debug-panel" style="flex-shrink:0">
+    <summary>🪲 Debug log <span id="debug-count" style="margin-left:6px;font-size:10px;color:#666"></span></summary>
+    <pre class="debug-pre" id="debug-pre"></pre>
+  </details>
+</div>
+
+<script>
+'use strict';
+
+// ── State ──────────────────────────────────────────────────────────────────────
+const S = {
+  photos: [],      // [{id, dataUrl, naturalW, naturalH}]
+  cards: [],       // [{id, photoId, num, corners[4], accepted, manual, ocrStatus, rot90, rotFine, cropCanvas}]
+  tokens: [],      // [{id, cardId, kind, value, assignedTo: {contactId,field}|null}]
+  contacts: [],    // [{id, cardId, name, title, company, emails, phones, linkedin, website}]
+  activePhotoId: null,
+  activeCardId: null,
+  useCJK: false,
+  drawMode: false,
+  drawStart: null,
+  drawCurrent: null,
+  cardCounter: 0,
+};
+
+// ── DOM helpers ────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+let toastTimer = null;
+function toast(msg, dur = 3000) {
+  const el = $('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), dur);
+}
+
+let dbgCount = 0;
+function dbg(msg) {
+  const pre = $('debug-pre');
+  if (!pre) { console.log(msg); return; }
+  dbgCount++;
+  const t = new Date().toISOString().slice(11, 22);
+  pre.textContent += `[${t}] ${msg}\n`;
+  pre.scrollTop = pre.scrollHeight;
+  // Auto-open log and update count badge
+  const panel = $('debug-panel');
+  if (panel && !panel.open) panel.open = true;
+  const cnt = $('debug-count');
+  if (cnt) cnt.textContent = `(${dbgCount})`;
+  console.log('[NCP]', msg);
+}
+
+// ── UUID ───────────────────────────────────────────────────────────────────────
+const uuid = () => crypto.randomUUID();
+
+// ── Photo helpers ──────────────────────────────────────────────────────────────
+function photoById(id) { return S.photos.find(p => p.id === id); }
+function cardById(id) { return S.cards.find(c => c.id === id); }
+function cardsForPhoto(photoId) { return S.cards.filter(c => c.photoId === photoId); }
+function contactByCardId(cardId) { return S.contacts.find(c => c.cardId === cardId); }
+function tokensByCardId(cardId) { return S.tokens.filter(t => t.cardId === cardId); }
+
+function getPhotoScale() {
+  const img = $('active-photo');
+  if (!img || !img.naturalWidth) return 1;
+  return img.offsetWidth / img.naturalWidth;
+}
+
+// ── OpenCV ─────────────────────────────────────────────────────────────────────
+let cvReady = false;
+let cvLoading = false;
+let cvCallbacks = [];
+
+const OPENCV_BASE = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.8.0-release.1/dist/';
+
+function ensureCV() {
+  return new Promise((res, rej) => {
+    if (cvReady) return res();
+    cvCallbacks.push({ res, rej });
+    if (cvLoading) return;
+    cvLoading = true;
+
+    setDetStatus('<span class="spinner"></span> Loading OpenCV…', false);
+    dbg('ensureCV: setting up Module.locateFile for WASM path…');
+
+    // CRITICAL: set locateFile BEFORE loading the script so Emscripten
+    // can find opencv_js.wasm even when loaded via a dynamic <script> tag
+    // (document.currentScript is null in that case, breaking auto-detection)
+    window.Module = window.Module || {};
+    window.Module.locateFile = (path) => {
+      const url = OPENCV_BASE + path;
+      dbg(`locateFile: ${path} → ${url}`);
+      return url;
+    };
+
+    let settled = false;
+    const cvTimeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      dbg('ERROR: OpenCV WASM init timed out after 20 s — check network tab for .wasm load failure');
+      const err = new Error('OpenCV timed out');
+      cvCallbacks.forEach(cb => cb.rej(err)); cvCallbacks = []; cvLoading = false;
+    }, 20000);
+
+    const doResolve = (label) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(cvTimeout);
+      dbg(`OpenCV WASM ready ✓ (via ${label})`);
+      cvReady = true;
+      cvCallbacks.forEach(cb => cb.res()); cvCallbacks = [];
+    };
+    const doReject = (label, err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(cvTimeout);
+      dbg(`OpenCV FAILED (${label}): ${err.message}`);
+      cvCallbacks.forEach(cb => cb.rej(err)); cvCallbacks = []; cvLoading = false;
+    };
+
+    dbg(`ensureCV: loading script from ${OPENCV_BASE}opencv.js`);
+    const s = document.createElement('script');
+    s.src = OPENCV_BASE + 'opencv.js';
+    s.async = true;
+    s.onerror = () => doReject('script.onerror', new Error('OpenCV script failed to load (network/CORS)'));
+    document.head.appendChild(s);
+
+    s.onload = () => {
+      dbg(`Script loaded — typeof cv="${typeof cv}", typeof Module="${typeof Module}"`);
+
+      const tryCvReady = (cvObj) => {
+        // Handle promise-based cv (some builds expose cv as a Promise)
+        if (cvObj && typeof cvObj.then === 'function') {
+          dbg('cv is Promise-based — awaiting resolution…');
+          cvObj.then(instance => {
+            window.cv = instance;
+            dbg('Promise cv resolved, cv object available');
+            doResolve('cv.then');
+          }).catch(e => doReject('cv.then reject', e));
+          return;
+        }
+        // Classic Emscripten module — check if WASM already ready
+        dbg(`cv is module object — checking WASM (cv.Mat exists: ${typeof cvObj.Mat})`);
+        // Set onRuntimeInitialized on both Module and cv in case they differ
+        const cb = () => doResolve('onRuntimeInitialized');
+        window.Module.onRuntimeInitialized = cb;
+        if (cvObj !== window.Module) cvObj.onRuntimeInitialized = cb;
+        try {
+          const t = new cvObj.Mat();
+          t.delete();
+          dbg('cv.Mat() OK — WASM already initialised');
+          doResolve('cv.Mat() test');
+        } catch(e) {
+          dbg(`cv.Mat() threw (${e.message}) — waiting for onRuntimeInitialized…`);
+        }
+      };
+
+      if (typeof cv !== 'undefined') {
+        tryCvReady(cv);
+      } else {
+        // cv might appear after a tick (module evaluation async in some builds)
+        dbg('cv undefined immediately after script load — retrying after 200 ms…');
+        setTimeout(() => {
+          if (typeof cv !== 'undefined') {
+            dbg(`cv appeared after delay: typeof cv="${typeof cv}"`);
+            tryCvReady(cv);
+          } else {
+            doReject('delayed check', new Error('cv global never defined'));
+          }
+        }, 200);
+      }
+    };
+  });
+}
+
+// ── Gamma LUT helper ───────────────────────────────────────────────────────────
+function buildGammaLut(gamma) {
+  const data = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) data[i] = Math.min(255, Math.round(Math.pow(i / 255, gamma) * 255));
+  return cv.matFromArray(1, 256, cv.CV_8UC1, data);
+}
+
+// ── Per-variant preprocessing (all produce grayscale Mat) ─────────────────────
+function applyVariant(grayMat, variant) {
+  const out = new cv.Mat();
+  try {
+    switch (variant) {
+      case 'original':    grayMat.copyTo(out); break;
+      case 'gamma_brt': { const lut = buildGammaLut(0.7);  cv.LUT(grayMat, lut, out); lut.delete(); break; }
+      case 'gamma_drk': { const lut = buildGammaLut(1.4);  cv.LUT(grayMat, lut, out); lut.delete(); break; }
+      case 'clahe': {
+        const clahe = cv.createCLAHE(3.0, new cv.Size(8, 8));
+        clahe.apply(grayMat, out); clahe.delete(); break;
+      }
+      case 'histeq':   cv.equalizeHist(grayMat, out); break;
+      case 'bilateral': cv.bilateralFilter(grayMat, out, 5, 50, 50); break;
+      case 'unsharp': {
+        const blurred = new cv.Mat();
+        cv.GaussianBlur(grayMat, blurred, new cv.Size(0, 0), 3);
+        cv.addWeighted(grayMat, 1.5, blurred, -0.5, 0, out);
+        blurred.delete(); break;
+      }
+      default: grayMat.copyTo(out);
+    }
+  } catch(e) { grayMat.copyTo(out); } // fallback to original on error
+  return out;
+}
+
+// ── Per-variant detection: returns [{corners[{x,y}x4], conf, area}] ───────────
+function detectRectanglesFromMat(variantMat, imgW, imgH) {
+  const blurred = new cv.Mat();
+  const edges   = new cv.Mat();
+  const dilated = new cv.Mat();
+  const contours  = new cv.MatVector();
+  const hierarchy = new cv.Mat();
+  const kernel  = cv.Mat.ones(3, 3, cv.CV_8U);
+  const results = [];
+
+  try {
+    cv.GaussianBlur(variantMat, blurred, new cv.Size(5, 5), 0);
+    cv.Canny(blurred, edges, 75, 200);
+    cv.dilate(edges, dilated, kernel);
+    cv.findContours(dilated, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+    const imgArea = imgW * imgH;
+    for (let i = 0; i < contours.size(); i++) {
+      const cnt = contours.get(i);
+      const area = cv.contourArea(cnt);
+      if (area < imgArea * 0.025 || area > imgArea * 0.92) { cnt.delete(); continue; }
+
+      const peri = cv.arcLength(cnt, true);
+      const approx = new cv.Mat();
+      cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+
+      if (approx.rows === 4) {
+        const corners = [];
+        for (let j = 0; j < 4; j++) corners.push({ x: approx.data32S[j*2], y: approx.data32S[j*2+1] });
+        const rx1 = Math.min(...corners.map(c=>c.x)), ry1 = Math.min(...corners.map(c=>c.y));
+        const rx2 = Math.max(...corners.map(c=>c.x)), ry2 = Math.max(...corners.map(c=>c.y));
+        const bw = rx2-rx1, bh = ry2-ry1;
+        const aspect = bw / (bh || 1);
+        if (aspect >= 0.3 && aspect <= 3.5) {
+          const conf = computeConf(corners, area, imgArea, aspect);
+          results.push({ corners, conf, area });
+        }
+      }
+      approx.delete(); cnt.delete();
+    }
+  } finally {
+    blurred.delete(); edges.delete(); dilated.delete();
+    contours.delete(); hierarchy.delete(); kernel.delete();
+  }
+  return results;
+}
+
+function computeConf(corners, area, imgArea, aspect) {
+  // Aspect ratio prior — business cards cluster around 1.55-1.75
+  const asMean = 1.65, asSig = 0.4;
+  const aspectScore = Math.exp(-Math.pow(aspect - asMean, 2) / (2 * asSig * asSig));
+  // Area ratio — typical card is 5–45% of photo
+  const areaRatio = area / imgArea;
+  const areaScore = areaRatio > 0.04 && areaRatio < 0.55 ? 1.0 : 0.5;
+  // Angle regularity — corners should be ~90°
+  let totalDev = 0;
+  for (let i = 0; i < 4; i++) {
+    const a = corners[(i+3)%4], b = corners[i], c = corners[(i+1)%4];
+    const v1 = {x: a.x-b.x, y: a.y-b.y}, v2 = {x: c.x-b.x, y: c.y-b.y};
+    const dot = v1.x*v2.x + v1.y*v2.y;
+    const mag = Math.sqrt((v1.x*v1.x+v1.y*v1.y)*(v2.x*v2.x+v2.y*v2.y)) + 1e-6;
+    const ang = Math.acos(Math.max(-1, Math.min(1, dot/mag))) * 180 / Math.PI;
+    totalDev += Math.abs(ang - 90);
+  }
+  const angleScore = Math.max(0, 1 - (totalDev/4)/90);
+  return 0.35*aspectScore + 0.25*areaScore + 0.40*angleScore;
+}
+
+// ── Weighted Box Fusion ────────────────────────────────────────────────────────
+function cornersIoU(ca, cb) {
+  const ax1=Math.min(...ca.map(p=>p.x)), ay1=Math.min(...ca.map(p=>p.y));
+  const ax2=Math.max(...ca.map(p=>p.x)), ay2=Math.max(...ca.map(p=>p.y));
+  const bx1=Math.min(...cb.map(p=>p.x)), by1=Math.min(...cb.map(p=>p.y));
+  const bx2=Math.max(...cb.map(p=>p.x)), by2=Math.max(...cb.map(p=>p.y));
+  const ix = Math.max(0, Math.min(ax2,bx2) - Math.max(ax1,bx1));
+  const iy = Math.max(0, Math.min(ay2,by2) - Math.max(ay1,by1));
+  const inter = ix * iy;
+  const union = (ax2-ax1)*(ay2-ay1) + (bx2-bx1)*(by2-by1) - inter;
+  return union > 0 ? inter / union : 0;
+}
+
+function wbfMerge(allBoxes, nVariants) {
+  if (!allBoxes.length) return [];
+  allBoxes.sort((a,b) => b.conf - a.conf);
+  const clusters = [];
+  for (const box of allBoxes) {
+    let matched = false;
+    for (const cl of clusters) {
+      if (cornersIoU(box.corners, cl.avg.corners) > 0.5) {
+        cl.members.push(box); cl.avg = wbfAvgCorners(cl.members); matched = true; break;
+      }
+    }
+    if (!matched) clusters.push({ members: [box], avg: box });
+  }
+  return clusters
+    .map(cl => {
+      const score = cl.members.reduce((s,b)=>s+b.conf,0) / nVariants;
+      return { corners: cl.avg.corners, conf: score, clusterSize: cl.members.length };
+    })
+    .filter(c => c.conf > 0.25)
+    .sort((a,b) => b.conf - a.conf);
+}
+
+function wbfAvgCorners(members) {
+  const total = members.reduce((s,b)=>s+b.conf,0) || 1;
+  const corners = [0,1,2,3].map(i => ({
+    x: members.reduce((s,b)=>s+b.corners[i].x*b.conf,0)/total,
+    y: members.reduce((s,b)=>s+b.corners[i].y*b.conf,0)/total,
+  }));
+  return { corners };
+}
+
+// ── Main detection entry point ─────────────────────────────────────────────────
+const VARIANTS = ['original','gamma_brt','gamma_drk','clahe','histeq','bilateral','unsharp'];
+
+async function detectCardsInPhoto(photoId) {
+  const photo = photoById(photoId);
+  if (!photo) return;
+
+  dbg(`detectCards start — photo "${photo.name}" ${photo.naturalW}×${photo.naturalH}`);
+
+  // Remove previous auto-detected cards for this photo (keep manual)
+  S.cards = S.cards.filter(c => c.photoId !== photoId || c.manual);
+
+  setDetStatus('<span class="spinner"></span> Detecting cards… (7 variants)', false);
+  renderCardList();
+
+  try {
+    await ensureCV();
+  } catch(e) {
+    dbg(`detectCards: OpenCV load FAILED — ${e.message}`);
+    setDetStatus('⚠ OpenCV failed to load — draw cards manually', false);
+    return;
+  }
+
+  try {
+    // Load photo onto a canvas, resized to max 800px for fast detection
+    const img = photo._img;
+    const MAX_DET = 800;
+    const detScale = Math.min(1, MAX_DET / Math.max(photo.naturalW, photo.naturalH));
+    const detW = Math.round(photo.naturalW * detScale);
+    const detH = Math.round(photo.naturalH * detScale);
+    dbg(`detectCards: resize ${photo.naturalW}×${photo.naturalH} → ${detW}×${detH} (scale ${detScale.toFixed(3)})`);
+    const srcCanvas = document.createElement('canvas');
+    srcCanvas.width = detW; srcCanvas.height = detH;
+    srcCanvas.getContext('2d').drawImage(img, 0, 0, detW, detH);
+
+    dbg('detectCards: cv.imread…');
+    const srcMat = cv.imread(srcCanvas);
+    const grayMat = new cv.Mat();
+    cv.cvtColor(srcMat, grayMat, cv.COLOR_RGBA2GRAY);
+    srcMat.delete();
+    dbg(`detectCards: grayscale Mat ${grayMat.cols}×${grayMat.rows}`);
+
+    let allBoxes = [];
+    for (let vi = 0; vi < VARIANTS.length; vi++) {
+      const variant = VARIANTS[vi];
+      setDetStatus(`<span class="spinner"></span> Detecting… variant ${vi+1}/${VARIANTS.length} (${variant})`, false);
+      dbg(`detectCards: variant ${vi+1}/${VARIANTS.length} — ${variant}`);
+      await new Promise(r => setTimeout(r, 0)); // yield to browser so UI updates
+      const vMat = applyVariant(grayMat, variant);
+      try {
+        const boxes = detectRectanglesFromMat(vMat, detW, detH);
+        dbg(`  → ${boxes.length} rect(s) found${boxes.length ? ', confs: [' + boxes.map(b=>b.conf.toFixed(2)).join(', ') + ']' : ''}`);
+        allBoxes.push(...boxes);
+      } catch(e) {
+        dbg(`  → variant ${variant} threw: ${e.message}`);
+      }
+      vMat.delete();
+      // Early exit: if first 3 variants already agree on ≥1 card with high confidence, skip slow ones
+      if (vi === 2) {
+        const early = wbfMerge(allBoxes, 3);
+        dbg(`detectCards: early-exit check — ${early.length} merged, top conf=${early[0]?.conf.toFixed(3) ?? 'n/a'}`);
+        if (early.length > 0 && early[0].conf > 0.6) {
+          dbg(`detectCards: early exit triggered (conf ${early[0].conf.toFixed(3)} > 0.6)`);
+          grayMat.delete();
+          const scaleBack = b => ({ ...b, corners: b.corners.map(p => ({ x: p.x/detScale, y: p.y/detScale })) });
+          finishDetection(photoId, wbfMerge(allBoxes, vi + 1).map(scaleBack));
+          return;
+        }
+      }
+    }
+    grayMat.delete();
+    const scaleBack = b => ({ ...b, corners: b.corners.map(p => ({ x: p.x/detScale, y: p.y/detScale })) });
+    const merged = wbfMerge(allBoxes, VARIANTS.length).map(scaleBack);
+    dbg(`detectCards: WBF merged → ${merged.length} card(s)${merged.length ? ', confs: [' + merged.map(b=>b.conf.toFixed(2)).join(', ') + ']' : ''}`);
+    finishDetection(photoId, merged);
+  } catch(e) {
+    dbg(`detectCards: UNCAUGHT ERROR — ${e.message}\n${e.stack?.split('\n').slice(0,3).join('\n')}`);
+    setDetStatus('⚠ Detection error — see debug log', true);
+  }
+}
+
+function finishDetection(photoId, merged) {
+  merged.sort((a,b) => {
+    const ay = Math.min(...a.corners.map(p=>p.y)), by = Math.min(...b.corners.map(p=>p.y));
+    const ax = Math.min(...a.corners.map(p=>p.x)), bx = Math.min(...b.corners.map(p=>p.x));
+    return (ay - by) || (ax - bx);
+  });
+  for (const box of merged) {
+    S.cardCounter++;
+    S.cards.push({ id: uuid(), photoId, num: S.cardCounter, corners: box.corners, accepted: true, manual: false, ocrStatus: 'idle', rot90: 0, rotFine: 0, cropCanvas: null });
+  }
+  setDetStatus(merged.length === 0 ? 'No cards detected — draw one manually' : `✓ Found ${merged.length} card${merged.length>1?'s':''}`, false);
+  renderCardList();
+  renderOverlay();
+  renderContactsPanel();
+  updateOCRButtons();
+}
+
+// ── Dewarp / crop a card ───────────────────────────────────────────────────────
+function buildCropCanvas(card, photo) {
+  if (!cvReady) return null;
+  const img = photo._img;  // already-loaded element stored at upload time
+  if (!img || !img.complete) return null;
+  const srcCanvas = document.createElement('canvas');
+  srcCanvas.width = photo.naturalW; srcCanvas.height = photo.naturalH;
+  srcCanvas.getContext('2d').drawImage(img, 0, 0);
+
+  const srcPts = card.corners;
+  const xs = srcPts.map(p=>p.x), ys = srcPts.map(p=>p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const W = Math.round(maxX - minX);
+  const H = Math.round(maxY - minY);
+  if (W < 10 || H < 10) return null;
+
+  try {
+    const src = cv.imread(srcCanvas);
+    const ordered = orderCorners(srcPts);
+    const dstPts  = [{ x:0,y:0 },{ x:W,y:0 },{ x:W,y:H },{ x:0,y:H }];
+    const srcMat  = cv.matFromArray(4,1,cv.CV_32FC2, ordered.flatMap(p=>[p.x,p.y]));
+    const dstMat  = cv.matFromArray(4,1,cv.CV_32FC2, dstPts.flatMap(p=>[p.x,p.y]));
+    const M       = cv.getPerspectiveTransform(srcMat, dstMat);
+    const dst     = new cv.Mat();
+    cv.warpPerspective(src, dst, M, new cv.Size(W, H));
+    const out = document.createElement('canvas');
+    out.width = W; out.height = H;
+    cv.imshow(out, dst);
+    src.delete(); srcMat.delete(); dstMat.delete(); M.delete(); dst.delete();
+
+    // Apply rotation
+    let result = out;
+    const totalRot = (card.rot90 || 0) + (card.rotFine || 0);
+    if (Math.abs(totalRot) > 0.05) result = rotateCanvas(result, totalRot);
+    return result;
+  } catch(e) {
+    // Fallback: simple bounding rect crop
+    const out = document.createElement('canvas');
+    out.width = W; out.height = H;
+    out.getContext('2d').drawImage(srcCanvas, minX, minY, W, H, 0, 0, W, H);
+    return out;
+  }
+}
+
+function orderCorners(pts) {
+  const cx = pts.reduce((s,p)=>s+p.x,0)/4;
+  const cy = pts.reduce((s,p)=>s+p.y,0)/4;
+  const tl = pts.find(p=>p.x<=cx&&p.y<=cy) || pts[0];
+  const tr = pts.find(p=>p.x> cx&&p.y<=cy) || pts[1];
+  const br = pts.find(p=>p.x> cx&&p.y> cy) || pts[2];
+  const bl = pts.find(p=>p.x<=cx&&p.y> cy) || pts[3];
+  return [tl, tr, br, bl];
+}
+
+function rotateCanvas(canvas, deg) {
+  const rad = deg * Math.PI / 180;
+  const w = canvas.width, h = canvas.height;
+  const sin = Math.abs(Math.sin(rad)), cos = Math.abs(Math.cos(rad));
+  const nw = Math.ceil(w*cos + h*sin), nh = Math.ceil(w*sin + h*cos);
+  const out = document.createElement('canvas');
+  out.width = nw; out.height = nh;
+  const ctx = out.getContext('2d');
+  ctx.translate(nw/2, nh/2); ctx.rotate(rad);
+  ctx.drawImage(canvas, -w/2, -h/2);
+  return out;
+}
+
+// ── Canvas overlay ─────────────────────────────────────────────────────────────
+function renderOverlay() {
+  const canvas = $('overlay-canvas');
+  const photo = photoById(S.activePhotoId);
+  if (!canvas || !photo) return;
+
+  const img = $('active-photo');
+  if (!img.offsetWidth) return;
+  canvas.width  = img.offsetWidth;
+  canvas.height = img.offsetHeight;
+  const scale = getPhotoScale();
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const cards = cardsForPhoto(S.activePhotoId);
+  for (const card of cards) {
+    drawCardBox(ctx, card, scale);
+  }
+
+  // In-progress manual draw
+  if (S.drawMode && S.drawStart && S.drawCurrent) {
+    ctx.strokeStyle = '#3b82f6';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6,3]);
+    const x = Math.min(S.drawStart.cx, S.drawCurrent.cx);
+    const y = Math.min(S.drawStart.cy, S.drawCurrent.cy);
+    const w = Math.abs(S.drawCurrent.cx - S.drawStart.cx);
+    const h = Math.abs(S.drawCurrent.cy - S.drawStart.cy);
+    ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
+  }
+}
+
+function drawCardBox(ctx, card, scale) {
+  const corners = card.corners.map(p => ({ x: p.x*scale, y: p.y*scale }));
+  const isActive = card.id === S.activeCardId;
+  const color = card.accepted ? (isActive ? '#16a34a' : '#22c55e') : '#ef4444';
+  const lineW = isActive ? 3 : 2;
+
+  ctx.beginPath();
+  ctx.moveTo(corners[0].x, corners[0].y);
+  for (let i = 1; i < corners.length; i++) ctx.lineTo(corners[i].x, corners[i].y);
+  ctx.closePath();
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineW;
+  ctx.stroke();
+  ctx.fillStyle = card.accepted ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)';
+  ctx.fill();
+
+  // Badge number
+  const cx = corners.reduce((s,p)=>s+p.x,0)/4;
+  const cy = corners.reduce((s,p)=>s+p.y,0)/4;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 12, 0, Math.PI*2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 11px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`C${card.num}`, cx, cy);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+
+  // Corner handles when active
+  if (isActive) {
+    for (const c of corners) {
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 6, 0, Math.PI*2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+}
+
+// ── Canvas mouse: select, drag handles, draw mode ──────────────────────────────
+let dragCornerIdx = null;
+let dragCard = null;
+
+function setupOverlayEvents() {
+  const canvas = $('overlay-canvas');
+
+  canvas.addEventListener('mousedown', e => {
+    if (S.drawMode) {
+      const p = canvasEvtPos(e);
+      S.drawStart = p; S.drawCurrent = p;
+      return;
+    }
+    // Check corner handles of active card
+    if (S.activeCardId) {
+      const scale = getPhotoScale();
+      const card = cardById(S.activeCardId);
+      if (card) {
+        for (let i = 0; i < card.corners.length; i++) {
+          const c = card.corners[i];
+          const cx = c.x * scale, cy = c.y * scale;
+          const p = canvasEvtPos(e);
+          if (Math.hypot(p.cx-cx, p.cy-cy) < 14) {
+            dragCornerIdx = i; dragCard = card; return;
+          }
+        }
+      }
+    }
+    // Click on a card box
+    const clicked = hitTestCards(e);
+    if (clicked) {
+      setActiveCard(clicked.id);
+    } else {
+      setActiveCard(null);
+    }
+  });
+
+  canvas.addEventListener('mousemove', e => {
+    if (S.drawMode && S.drawStart) {
+      S.drawCurrent = canvasEvtPos(e);
+      renderOverlay(); return;
+    }
+    if (dragCornerIdx !== null && dragCard) {
+      const p = canvasEvtPos(e);
+      const scale = getPhotoScale();
+      dragCard.corners[dragCornerIdx] = { x: p.cx / scale, y: p.cy / scale };
+      dragCard.cropCanvas = null;
+      renderOverlay(); return;
+    }
+    // Cursor hint
+    const hit = hitTestCards(e);
+    canvas.style.cursor = hit ? 'pointer' : (S.drawMode ? 'crosshair' : 'default');
+  });
+
+  canvas.addEventListener('mouseup', e => {
+    if (S.drawMode && S.drawStart && S.drawCurrent) {
+      finalizeManualDraw(); return;
+    }
+    if (dragCornerIdx !== null) {
+      dragCard.cropCanvas = null;
+      dragCornerIdx = null; dragCard = null;
+      renderOverlay();
+    }
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    if (dragCornerIdx !== null) {
+      dragCornerIdx = null; dragCard = null;
+    }
+    if (S.drawMode && S.drawStart) {
+      S.drawStart = null; S.drawCurrent = null; S.drawMode = false;
+      renderOverlay();
+    }
+  });
+}
+
+function canvasEvtPos(e) {
+  const canvas = $('overlay-canvas');
+  const rect = canvas.getBoundingClientRect();
+  return { cx: e.clientX - rect.left, cy: e.clientY - rect.top };
+}
+
+function hitTestCards(e) {
+  const scale = getPhotoScale();
+  const p = canvasEvtPos(e);
+  const cards = cardsForPhoto(S.activePhotoId).filter(c => c.accepted);
+  for (const card of cards) {
+    if (pointInPolygon({ x: p.cx/scale, y: p.cy/scale }, card.corners)) return card;
+  }
+  return null;
+}
+
+function pointInPolygon(pt, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length-1; i < poly.length; j = i++) {
+    const xi=poly[i].x, yi=poly[i].y, xj=poly[j].x, yj=poly[j].y;
+    const intersect = ((yi>pt.y)!==(yj>pt.y)) && (pt.x < (xj-xi)*(pt.y-yi)/(yj-yi)+xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function finalizeManualDraw() {
+  const s = S.drawStart, c = S.drawCurrent;
+  const x1 = Math.min(s.cx, c.cx) / getPhotoScale();
+  const y1 = Math.min(s.cy, c.cy) / getPhotoScale();
+  const x2 = Math.max(s.cx, c.cx) / getPhotoScale();
+  const y2 = Math.max(s.cy, c.cy) / getPhotoScale();
+  if (x2-x1 < 20 || y2-y1 < 20) { toast('Too small — draw a larger region'); }
+  else {
+    S.cardCounter++;
+    const card = {
+      id: uuid(), photoId: S.activePhotoId, num: S.cardCounter,
+      corners: [{x:x1,y:y1},{x:x2,y:y1},{x:x2,y:y2},{x:x1,y:y2}],
+      accepted: true, manual: true,
+      ocrStatus: 'idle', rot90: 0, rotFine: 0, cropCanvas: null,
+    };
+    S.cards.push(card);
+    setActiveCard(card.id);
+    renderCardList();
+    updateOCRButtons();
+    toast('Card added manually');
+  }
+  S.drawMode = false; S.drawStart = null; S.drawCurrent = null;
+  $('overlay-canvas').style.cursor = 'default';
+  renderOverlay();
+}
+
+// ── Card selection ─────────────────────────────────────────────────────────────
+function setActiveCard(cardId) {
+  S.activeCardId = cardId;
+  // Sync active contact
+  const contact = S.contacts.find(c => c.cardId === cardId);
+  S.activeContactId = contact ? contact.id : null;
+
+  renderCardList();
+  renderOverlay();
+  renderRotControls();
+  renderTokensPanel();
+  renderContactsPanel();
+  updateOCRButtons();
+}
+
+// ── Rotation controls ──────────────────────────────────────────────────────────
+function renderRotControls() {
+  const el = $('rot-controls');
+  if (!S.activeCardId) { el.classList.remove('visible'); return; }
+  el.classList.add('visible');
+  const card = cardById(S.activeCardId);
+  if (!card) return;
+  $('rot-slider').value = card.rotFine || 0;
+  updateRotAngleDisplay(card);
+}
+
+function updateRotAngleDisplay(card) {
+  const total = (card.rot90||0) + (card.rotFine||0);
+  $('rot-angle').textContent = total.toFixed(1) + '°';
+}
+
+function doRotate(card, delta90, deltaFine) {
+  card.rot90  = ((card.rot90 || 0) + delta90);
+  card.rotFine = (card.rotFine || 0) + deltaFine;
+  card.cropCanvas = null;
+  updateRotAngleDisplay(card);
+}
+
+// ── Card list render ───────────────────────────────────────────────────────────
+function renderCardList() {
+  const cards = cardsForPhoto(S.activePhotoId);
+  const listEl = $('card-list');
+  const itemsEl = $('card-items');
+  if (!cards.length) { listEl.style.display = 'none'; return; }
+  listEl.style.display = 'block';
+  itemsEl.innerHTML = '';
+
+  for (const card of cards) {
+    const div = document.createElement('div');
+    div.className = 'card-item' + (card.id === S.activeCardId ? ' active-card' : '') + (!card.accepted ? ' rejected-card' : '');
+    div.style.opacity = card.accepted ? '1' : '0.5';
+
+    const contact = contactByCardId(card.id);
+    const label = contact && contact.name ? contact.name : `Card C${card.num}`;
+    const ocrLabel = card.ocrStatus === 'running' ? '<span class="spinner" style="width:10px;height:10px;border-width:1.5px"></span>' :
+                     card.ocrStatus === 'done'    ? '<span style="color:var(--green)">✓ OCR</span>' : '';
+
+    div.innerHTML = `
+      <div class="card-badge ${card.manual ? 'manual' : (card.accepted ? '' : 'rejected')}" title="C${card.num}">C${card.num}</div>
+      <div class="card-label">${label}</div>
+      <div class="card-ocr-status">${ocrLabel}</div>
+      <div class="card-btns">
+        <button class="btn-icon accept-btn" title="Accept" data-id="${card.id}">✓</button>
+        <button class="btn-icon reject-btn" title="Reject" data-id="${card.id}" style="color:var(--red)">✗</button>
+      </div>`;
+
+    div.addEventListener('click', (e) => {
+      if (e.target.classList.contains('accept-btn') || e.target.classList.contains('reject-btn')) return;
+      setActiveCard(card.id);
+    });
+    div.querySelector('.accept-btn').addEventListener('click', () => { card.accepted = true;  renderCardList(); renderOverlay(); updateOCRButtons(); });
+    div.querySelector('.reject-btn').addEventListener('click', () => { card.accepted = false; renderCardList(); renderOverlay(); updateOCRButtons(); });
+    itemsEl.appendChild(div);
+  }
+}
+
+// ── Detection status bar ───────────────────────────────────────────────────────
+function setDetStatus(html, isError) {
+  const el = $('det-status');
+  el.innerHTML = html;
+  el.style.color = isError ? 'var(--red)' : '';
+}
+
+// ── Upload handling ────────────────────────────────────────────────────────────
+function processFiles(files) {
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) { toast('Not an image: ' + file.name); continue; }
+    const reader = new FileReader();
+    reader.onload = e => addPhoto(e.target.result, file.name);
+    reader.readAsDataURL(file);
+  }
+}
+
+function addPhoto(dataUrl, name) {
+  const img = new Image();
+  img.onload = () => {
+    const photo = { id: uuid(), dataUrl, name: name || 'photo', naturalW: img.naturalWidth, naturalH: img.naturalHeight, _img: img };
+    S.photos.push(photo);
+    renderPhotoStrip();
+    setActivePhoto(photo.id);
+    detectCardsInPhoto(photo.id);
+  };
+  img.src = dataUrl;
+}
+
+function setActivePhoto(photoId) {
+  S.activePhotoId = photoId;
+  S.activeCardId = null;
+  S.drawMode = false;
+
+  const photo = photoById(photoId);
+  const img = $('active-photo');
+  img.onload = () => {
+    $('overlay-canvas').width  = img.offsetWidth;
+    $('overlay-canvas').height = img.offsetHeight;
+    renderOverlay();
+    renderCardList();
+    renderRotControls();
+  };
+  img.src = photo.dataUrl;
+
+  $('upload-zone').style.display = 'none';
+  const sc = $('scan-content');
+  sc.style.display = 'flex';
+  sc.style.flex    = '1';
+  sc.style.flexDirection = 'column';
+  sc.style.overflow = 'hidden';
+
+  renderPhotoStrip();
+  renderCardList();
+  setDetStatus('', false);
+  $('btn-redetect').style.display = '';
+  updateOCRButtons();
+}
+
+function renderPhotoStrip() {
+  const strip = $('photo-strip');
+  strip.innerHTML = '';
+  for (const photo of S.photos) {
+    const t = document.createElement('div');
+    t.className = 'thumb' + (photo.id === S.activePhotoId ? ' active' : '');
+    t.innerHTML = `<img src="${photo.dataUrl}" alt=""><button class="thumb-del" data-id="${photo.id}">✕</button>`;
+    t.addEventListener('click', e => {
+      if (e.target.classList.contains('thumb-del')) return;
+      setActivePhoto(photo.id);
+    });
+    t.querySelector('.thumb-del').addEventListener('click', e => {
+      e.stopPropagation(); removePhoto(photo.id);
+    });
+    strip.appendChild(t);
+  }
+  const add = document.createElement('div');
+  add.className = 'thumb-add';
+  add.textContent = '+';
+  add.addEventListener('click', () => $('fileInput').click());
+  strip.appendChild(add);
+}
+
+function removePhoto(photoId) {
+  S.cards = S.cards.filter(c => c.photoId !== photoId);
+  S.photos = S.photos.filter(p => p.id !== photoId);
+  if (S.activePhotoId === photoId) {
+    if (S.photos.length) setActivePhoto(S.photos[S.photos.length-1].id);
+    else resetToUpload();
+  } else renderPhotoStrip();
+}
+
+function resetToUpload() {
+  S.activePhotoId = null; S.activeCardId = null;
+  $('upload-zone').style.display = '';
+  $('scan-content').style.display = 'none';
+  $('btn-redetect').style.display = 'none';
+  renderPhotoStrip();
+  renderTokensPanel();
+  renderContactsPanel();
+  updateOCRButtons();
+}
+
+// ── OCR buttons state ─────────────────────────────────────────────────────────
+function updateOCRButtons() {
+  const hasCard = !!S.activeCardId && cardById(S.activeCardId)?.accepted;
+  const hasAny  = cardsForPhoto(S.activePhotoId).some(c => c.accepted);
+  $('btn-ocr-card').disabled = !hasCard;
+  $('btn-ocr-all').disabled  = !hasAny;
+}
+
+// ── Tesseract ─────────────────────────────────────────────────────────────────
+let tWorkerEng = null, tWorkerCJK = null;
+
+async function loadTesseract() {
+  if (window.Tesseract) return;
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/tesseract.js@5/dist/tesseract.min.js';
+    s.onload = res; s.onerror = () => rej(new Error('Tesseract load failed'));
+    document.head.appendChild(s);
+  });
+}
+
+async function ensureWorker(useCJK, onProgress) {
+  await loadTesseract();
+  let w = useCJK ? tWorkerCJK : tWorkerEng;
+  if (!w) {
+    if (onProgress) onProgress(useCJK ? 'Loading Chinese + English model…' : 'Loading English model…');
+    w = await Tesseract.createWorker(useCJK ? 'eng+chi_sim' : 'eng', 1, {
+      logger: m => { if (m.status === 'recognizing text' && onProgress) onProgress(null, m.progress); }
+    });
+    await w.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' });
+    if (useCJK) tWorkerCJK = w; else tWorkerEng = w;
+  }
+  return w;
+}
+
+// Tier A preprocessing (reused from prior iteration)
+function preprocessForOCR(canvas) {
+  const targetMax = 1800;
+  const curMax = Math.max(canvas.width, canvas.height);
+  const scale = curMax < targetMax ? Math.min(3, targetMax / curMax) : 1;
+  const W = Math.round(canvas.width * scale), H = Math.round(canvas.height * scale);
+  const out = document.createElement('canvas'); out.width = W; out.height = H;
+  const ctx = out.getContext('2d');
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(canvas, 0, 0, W, H);
+  const img = ctx.getImageData(0, 0, W, H); const d = img.data;
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < d.length; i += 4) hist[(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2])|0]++;
+  const total = d.length/4|0;
+  let acc=0, lo=0, hi=255;
+  for (let v=0;v<256;v++){acc+=hist[v];if(acc>=total*.01){lo=v;break;}} acc=0;
+  for (let v=0;v<256;v++){acc+=hist[v];if(acc>=total*.99){hi=v;break;}}
+  const range = Math.max(1, hi-lo);
+  for (let i=0;i<d.length;i+=4){ let s=((0.299*d[i]+0.587*d[i+1]+0.114*d[i+2])-lo)/range*255; s=Math.max(0,Math.min(255,s)); d[i]=d[i+1]=d[i+2]=s; }
+  ctx.putImageData(img, 0, 0);
+  return out;
+}
+
+async function runOCROnCard(cardId) {
+  const card = cardById(cardId);
+  const photo = card ? photoById(card.photoId) : null;
+  if (!card || !photo) return;
+
+  dbg(`OCR start — card #${card.num} (${cardId.slice(0,8)})`);
+  card.ocrStatus = 'running';
+  renderCardList();
+  updateHdrStatus();
+
+  try {
+    // Build crop canvas if not cached
+    if (!card.cropCanvas) {
+      dbg(`OCR: building crop canvas…`);
+      card.cropCanvas = buildCropCanvas(card, photo);
+    }
+    if (!card.cropCanvas) throw new Error('Could not crop card');
+    dbg(`OCR: crop canvas ${card.cropCanvas.width}×${card.cropCanvas.height}`);
+
+    const pre = preprocessForOCR(card.cropCanvas);
+    dbg(`OCR: preprocessed to ${pre.width}×${pre.height}, starting Tesseract…`);
+    const w = await ensureWorker(S.useCJK, msg => { setDetStatus(`<span class="spinner"></span> ${msg}`, false); dbg(`OCR worker: ${msg}`); });
+    const { data } = await w.recognize(pre);
+    card.ocrStatus = 'done';
+    const rawText = data.text;
+    const rawLines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+    dbg(`OCR: done — ${rawLines.length} lines, avg conf ${data.words?.length ? Math.round(data.words.reduce((s,w)=>s+w.confidence,0)/data.words.length) : '?'}%`);
+    dbg(`OCR raw text: ${rawLines.slice(0,5).join(' | ')}${rawLines.length>5?` … +${rawLines.length-5} more`:''}`);
+
+    // Parse fields
+    const fields = parseFields(rawText);
+    dbg(`OCR parse: name="${fields.name}" title="${fields.title}" company="${fields.company}" emails=[${fields.emails.join(',')}] phones=[${fields.phones.join(',')}]`);
+
+    // Build or update contact
+    let contact = contactByCardId(cardId);
+    if (!contact) {
+      contact = { id: uuid(), cardId, ...fields };
+      S.contacts.push(contact);
+    } else {
+      Object.assign(contact, fields);
+    }
+    S.activeContactId = contact.id;
+
+    // Build tokens
+    S.tokens = S.tokens.filter(t => t.cardId !== cardId); // clear old
+    const assignedValues = new Set([
+      ...fields.emails, ...fields.phones, fields.linkedin, fields.website,
+      fields.name, fields.title, fields.company,
+    ].filter(Boolean));
+
+    for (const e of fields.emails)  S.tokens.push({ id: uuid(), cardId, kind: 'email',    value: e,               assignedTo: { contactId: contact.id, field: 'emails' } });
+    for (const p of fields.phones)  S.tokens.push({ id: uuid(), cardId, kind: 'phone',    value: p,               assignedTo: { contactId: contact.id, field: 'phones' } });
+    if (fields.linkedin)             S.tokens.push({ id: uuid(), cardId, kind: 'linkedin', value: fields.linkedin, assignedTo: { contactId: contact.id, field: 'linkedin' } });
+    if (fields.website)              S.tokens.push({ id: uuid(), cardId, kind: 'url',      value: fields.website,  assignedTo: { contactId: contact.id, field: 'website' } });
+
+    for (const line of rawLines) {
+      const already = [...assignedValues].some(v => v && line.includes(v));
+      if (!already && line.length > 1) {
+        const field = line === fields.name    ? 'name' :
+                      line === fields.title   ? 'title' :
+                      line === fields.company ? 'company' : null;
+        S.tokens.push({ id: uuid(), cardId, kind: 'line', value: line, assignedTo: field ? { contactId: contact.id, field } : null });
+      }
+    }
+
+    dbg(`OCR: ${S.tokens.filter(t=>t.cardId===cardId).length} tokens built (${S.tokens.filter(t=>t.cardId===cardId&&t.assignedTo).length} assigned)`);
+    setDetStatus(`✓ OCR done — ${rawLines.length} lines extracted`, false);
+  } catch(e) {
+    dbg(`OCR ERROR: ${e.message}`);
+    card.ocrStatus = 'error';
+    toast('OCR failed: ' + e.message, 5000);
+    setDetStatus('⚠ OCR failed', true);
+  }
+
+  renderCardList();
+  renderTokensPanel();
+  renderContactsPanel();
+  updateHdrStatus();
+}
+
+// ── Field parser ──────────────────────────────────────────────────────────────
+function parseFields(text) {
+  const emails = [...text.matchAll(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi)].map(m=>m[0]);
+  const phones = [...text.matchAll(/(\+?[\d\s\-(). ]{7,20})/g)].map(m=>m[1].trim())
+    .filter(p=>(p.match(/\d/g)||[]).length>=6&&(p.match(/\d/g)||[]).length<=15)
+    .filter(p=>!emails.some(e=>e.includes(p.replace(/\D/g,''))))
+    .filter((p,i,a)=>a.indexOf(p)===i);
+  const linkedins = [...text.matchAll(/linkedin\.com\/in\/[\w-]+/gi)].map(m=>m[0]);
+  const websites = [...text.matchAll(/(https?:\/\/)?[\w.-]+\.(com|co|io|net|org|hk|sg|cn)[/\w.-]*/gi)].map(m=>m[0])
+    .filter(w=>!linkedins.some(l=>w.includes('linkedin'))&&!emails.some(e=>e.includes(w)));
+  const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
+  const titleKw = /\b(director|manager|vp|svp|evp|ceo|cfo|coo|cto|founder|partner|head|senior|associate|analyst|officer|president|principal)\b|总监|经理|总裁|主席|副总/i;
+  const companyKw = /\b(ltd|llc|pte|inc|corp|group|capital|fund|partners|holdings|ventures|advisors|advisory|asset|management)\b|有限公司|集团|基金/i;
+  let name='', title='', company='';
+  for (const line of lines) {
+    if (emails.some(e=>line.includes(e))) continue;
+    if (phones.some(p=>line.includes(p.slice(0,5)))) continue;
+    if (websites.some(w=>line.toLowerCase().includes(w.toLowerCase().slice(0,8)))) continue;
+    if (!title&&titleKw.test(line)) { title=line; continue; }
+    if (!company&&companyKw.test(line)) { company=line; continue; }
+    if (!name) {
+      const words=line.split(/\s+/).filter(Boolean);
+      const hasCJK=/[\u4e00-\u9fff]/.test(line);
+      if (hasCJK&&line.replace(/\s/g,'').length>=2&&line.replace(/\s/g,'').length<=6){name=line;continue;}
+      if (!hasCJK&&words.length>=2&&words.length<=4&&/^[A-Z]/.test(line)){name=line;continue;}
+    }
+  }
+  return { name, title, company, emails: emails.filter((e,i,a)=>a.indexOf(e)===i), phones: phones.slice(0,5), linkedin: linkedins[0]||'', website: websites.filter(w=>!w.includes('linkedin'))[0]||'' };
+}
+
+// ── Panel 2: Tokens ───────────────────────────────────────────────────────────
+function renderTokensPanel() {
+  const body = $('tokens-body');
+  const activeContact = S.activeContactId ? S.contacts.find(c=>c.id===S.activeContactId) : null;
+  const tokens = S.tokens;
+
+  if (!tokens.length) {
+    body.innerHTML = '<div class="tokens-empty">Select a card in Panel 1<br>then run OCR to see tokens</div>';
+    return;
+  }
+
+  const emails    = tokens.filter(t => t.kind === 'email');
+  const phones    = tokens.filter(t => t.kind === 'phone');
+  const linkedins = tokens.filter(t => t.kind === 'linkedin');
+  const urls      = tokens.filter(t => t.kind === 'url');
+  const lines     = tokens.filter(t => t.kind === 'line');
+
+  body.innerHTML = '';
+
+  function isActive(t) { return activeContact && t.assignedTo && t.assignedTo.contactId === activeContact.id; }
+  function srcClass(t) { return isActive(t) ? 'src-active' : (t.assignedTo ? 'assigned' : ''); }
+
+  function chipGroup(title, list) {
+    if (!list.length) return;
+    const g = document.createElement('div'); g.className = 'token-group';
+    g.innerHTML = `<div class="token-group-title">${title}</div><div class="token-chips"></div>`;
+    const chips = g.querySelector('.token-chips');
+    for (const t of list) {
+      const chip = document.createElement('div');
+      chip.className = `token-chip ${srcClass(t)}`; chip.draggable = true;
+      chip.dataset.tokenId = t.id;
+      chip.innerHTML = `<span>${t.value}</span><span class="token-src">C${cardById(t.cardId)?.num||'?'}</span>`;
+      addTokenDragHandlers(chip, t);
+      chips.appendChild(chip);
+    }
+    body.appendChild(g);
+  }
+
+  function lineGroup(title, list) {
+    if (!list.length) return;
+    const g = document.createElement('div'); g.className = 'token-group';
+    g.innerHTML = `<div class="token-group-title">${title}</div><div class="token-lines"></div>`;
+    const linesEl = g.querySelector('.token-lines');
+    for (const t of list) {
+      const line = document.createElement('div');
+      line.className = `token-line ${srcClass(t)}`; line.draggable = true;
+      line.dataset.tokenId = t.id;
+      line.innerHTML = `<span class="token-line-val" title="${t.value}">${t.value}</span><span class="token-src">C${cardById(t.cardId)?.num||'?'}</span>`;
+      addTokenDragHandlers(line, t);
+      linesEl.appendChild(line);
+    }
+    body.appendChild(g);
+  }
+
+  chipGroup('Emails', emails);
+  chipGroup('Phones', phones);
+  chipGroup('LinkedIn', linkedins);
+  chipGroup('URLs', urls);
+  lineGroup('Text Lines', lines);
+}
+
+function addTokenDragHandlers(el, token) {
+  el.addEventListener('dragstart', e => {
+    e.dataTransfer.setData('text/plain', token.id);
+    e.dataTransfer.effectAllowed = 'copy';
+  });
+  el.addEventListener('click', () => {
+    // Click-to-assign: if there's an active field, assign to it
+    if (S.activeFieldKey && S.activeContactId) {
+      assignToken(token.id, S.activeContactId, S.activeFieldKey);
+    }
+  });
+}
+
+// ── Panel 3: Contacts ─────────────────────────────────────────────────────────
+let S_activeFieldKey = null;
+Object.defineProperty(S, 'activeFieldKey', {
+  get() { return S_activeFieldKey; },
+  set(v) { S_activeFieldKey = v; },
+});
+
+const FIELDS = [
+  { key: 'name',    label: 'Name',    multi: false },
+  { key: 'title',   label: 'Title',   multi: false },
+  { key: 'company', label: 'Company', multi: false },
+  { key: 'emails',  label: 'Emails',  multi: true  },
+  { key: 'phones',  label: 'Phones',  multi: true  },
+  { key: 'linkedin',label: 'LinkedIn',multi: false },
+  { key: 'website', label: 'Website', multi: false },
+];
+
+function renderContactsPanel() {
+  const body = $('contacts-body');
+  if (!S.contacts.length) {
+    body.innerHTML = '<div class="contacts-empty">Contacts appear here after OCR runs</div>';
+    return;
+  }
+  body.innerHTML = '';
+  for (const contact of S.contacts) {
+    const card = cardById(contact.cardId);
+    const row = document.createElement('div');
+    row.className = 'contact-row' + (contact.id === S.activeContactId ? ' active-contact' : '');
+    row.addEventListener('click', e => {
+      if (e.target.closest('.cf-val')) return;
+      S.activeContactId = contact.id;
+      S.activeCardId = contact.cardId;
+      renderContactsPanel(); renderCardList(); renderOverlay(); renderTokensPanel();
+    });
+
+    const nameHtml = contact.name || `<span style="color:var(--muted)">Unknown</span>`;
+    const compHtml = contact.company || '';
+
+    let fieldsHtml = '<div class="contact-fields">';
+    for (const f of FIELDS) {
+      fieldsHtml += `<div class="cf-label">${f.label}</div>`;
+      if (f.multi) {
+        const vals = contact[f.key] || [];
+        let chips = vals.map((v,i) => `<div class="chip">${v}<button class="chip-del" data-fkey="${f.key}" data-idx="${i}" data-cid="${contact.id}">×</button></div>`).join('');
+        fieldsHtml += `<div class="cf-val chip-list drop-target" data-fkey="${f.key}" data-cid="${contact.id}" data-multi="1">${chips}<button class="chip-add" data-fkey="${f.key}" data-cid="${contact.id}">+ add</button></div>`;
+      } else {
+        const val = contact[f.key] || '';
+        fieldsHtml += `<div class="cf-val" contenteditable="true" data-fkey="${f.key}" data-cid="${contact.id}">${val}</div>`;
+      }
+    }
+    fieldsHtml += '</div>';
+
+    row.innerHTML = `
+      <div class="contact-hd">
+        <div class="contact-num">${card ? card.num : '?'}</div>
+        <div><div class="contact-name">${nameHtml}</div><div class="contact-company">${compHtml}</div></div>
+      </div>
+      ${fieldsHtml}`;
+
+    // Editable single-value fields
+    row.querySelectorAll('.cf-val[contenteditable]').forEach(el => {
+      el.addEventListener('focus', () => {
+        S.activeContactId = contact.id;
+        S.activeFieldKey = el.dataset.fkey;
+        el.classList.add('active-field');
+      });
+      el.addEventListener('blur', () => {
+        const c = S.contacts.find(c=>c.id===el.dataset.cid);
+        if (c) c[el.dataset.fkey] = el.textContent.trim();
+        el.classList.remove('active-field');
+        S.activeFieldKey = null;
+        renderTokensPanel();
+      });
+    });
+
+    // Multi-value chip delete
+    row.querySelectorAll('.chip-del').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const c = S.contacts.find(c=>c.id===btn.dataset.cid);
+        if (c) { c[btn.dataset.fkey].splice(+btn.dataset.idx, 1); }
+        renderContactsPanel(); renderTokensPanel();
+      });
+    });
+
+    // Multi-value add button
+    row.querySelectorAll('.chip-add').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const val = prompt(`Add ${btn.dataset.fkey.replace(/s$/,'')}:`);
+        if (val && val.trim()) {
+          const c = S.contacts.find(c=>c.id===btn.dataset.cid);
+          if (c) c[btn.dataset.fkey].push(val.trim());
+          renderContactsPanel();
+        }
+      });
+    });
+
+    // Drop targets
+    row.querySelectorAll('.drop-target, .cf-val[contenteditable]').forEach(el => {
+      el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drop-hover'); });
+      el.addEventListener('dragleave', () => el.classList.remove('drop-hover'));
+      el.addEventListener('drop', e => {
+        e.preventDefault(); e.stopPropagation();
+        el.classList.remove('drop-hover');
+        const tokenId = e.dataTransfer.getData('text/plain');
+        assignToken(tokenId, contact.id, el.dataset.fkey);
+      });
+    });
+
+    body.appendChild(row);
+  }
+}
+
+function assignToken(tokenId, contactId, field) {
+  const token = S.tokens.find(t => t.id === tokenId);
+  const contact = S.contacts.find(c => c.id === contactId);
+  if (!token || !contact) return;
+
+  const isMulti = FIELDS.find(f=>f.key===field)?.multi;
+  if (isMulti) {
+    if (!Array.isArray(contact[field])) contact[field] = [];
+    if (!contact[field].includes(token.value)) contact[field].push(token.value);
+  } else {
+    contact[field] = token.value;
+  }
+  token.assignedTo = { contactId, field };
+  S.activeFieldKey = null;
+  renderContactsPanel();
+  renderTokensPanel();
+}
+
+// ── Header status ──────────────────────────────────────────────────────────────
+function updateHdrStatus() {
+  const total = S.contacts.length;
+  const done  = S.cards.filter(c=>c.ocrStatus==='done').length;
+  $('hdr-status').textContent = total ? `${done} card${done!==1?'s':''} processed · ${total} contact${total!==1?'s':''}` : '';
+}
+
+// ── Export stubs ───────────────────────────────────────────────────────────────
+function exportCSV() {
+  if (!S.contacts.length) { toast('No contacts to export'); return; }
+  const rows = [['name','title','company','email','phone','linkedin','website']];
+  for (const c of S.contacts) rows.push([c.name,c.title,c.company,(c.emails||[]).join('|'),(c.phones||[]).join('|'),c.linkedin,c.website].map(v=>'"'+(v||'').replace(/"/g,'""')+'"'));
+  download('card-capture.csv', rows.map(r=>r.join(',')).join('\n'), 'text/csv');
+}
+function exportJSON() {
+  if (!S.contacts.length) { toast('No contacts to export'); return; }
+  download('card-capture.json', JSON.stringify({ contacts: S.contacts, exported_at: new Date().toISOString() }, null, 2), 'application/json');
+}
+function exportVCF() {
+  if (!S.contacts.length) { toast('No contacts to export'); return; }
+  const vcf = S.contacts.map(c => [
+    'BEGIN:VCARD','VERSION:3.0',
+    c.name    ? `FN:${c.name}`    : '',
+    c.title   ? `TITLE:${c.title}` : '',
+    c.company ? `ORG:${c.company}` : '',
+    ...(c.emails||[]).map(e=>`EMAIL:${e}`),
+    ...(c.phones||[]).map(p=>`TEL:${p}`),
+    c.linkedin ? `URL:https://${c.linkedin}` : '',
+    c.website  ? `URL:${c.website}` : '',
+    'END:VCARD',
+  ].filter(Boolean).join('\n')).join('\n\n');
+  download('card-capture.vcf', vcf, 'text/vcard');
+}
+function download(name, content, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], { type }));
+  a.download = name; a.click();
+}
+
+// ── Init & event wiring ────────────────────────────────────────────────────────
+function init() {
+  // Upload zone
+  const zone = $('upload-zone');
+  zone.addEventListener('click', () => $('fileInput').click());
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); processFiles(Array.from(e.dataTransfer.files)); });
+
+  // File input
+  $('fileInput').addEventListener('change', e => { processFiles(Array.from(e.target.files)); e.target.value=''; });
+
+  // Paste
+  document.addEventListener('paste', e => {
+    const imgs = Array.from(e.clipboardData.items).filter(i => i.type.startsWith('image/'));
+    if (!imgs.length) return;
+    e.preventDefault();
+    imgs.forEach(i => { const f = i.getAsFile(); if (f) processFiles([f]); });
+  });
+
+  // Re-detect
+  $('btn-redetect').addEventListener('click', () => { if (S.activePhotoId) detectCardsInPhoto(S.activePhotoId); });
+
+  // Clear all
+  $('btn-clear-all').addEventListener('click', () => {
+    if (!S.photos.length || confirm('Clear all photos and contacts?')) {
+      S.photos = []; S.cards = []; S.tokens = []; S.contacts = [];
+      S.activePhotoId = null; S.activeCardId = null; S.cardCounter = 0;
+      resetToUpload(); updateHdrStatus();
+    }
+  });
+
+  // Draw card manually
+  $('btn-draw-card').addEventListener('click', () => {
+    S.drawMode = true;
+    $('overlay-canvas').style.cursor = 'crosshair';
+    toast('Drag on the photo to draw a card boundary');
+  });
+
+  // OCR buttons
+  $('btn-ocr-card').addEventListener('click', () => { if (S.activeCardId) runOCROnCard(S.activeCardId); });
+  $('btn-ocr-all').addEventListener('click', async () => {
+    const cards = cardsForPhoto(S.activePhotoId).filter(c => c.accepted && c.ocrStatus !== 'done');
+    for (const card of cards) await runOCROnCard(card.id);
+  });
+
+  // Language toggle
+  $('use-cjk').addEventListener('change', e => { S.useCJK = e.target.checked; });
+
+  // Rotation
+  $('rot-ccw90').addEventListener('click', () => { const c=cardById(S.activeCardId); if(c){ doRotate(c,-90,0); c.cropCanvas=null; } });
+  $('rot-cw90') .addEventListener('click', () => { const c=cardById(S.activeCardId); if(c){ doRotate(c,+90,0); c.cropCanvas=null; } });
+  $('rot-ccw15').addEventListener('click', () => { const c=cardById(S.activeCardId); if(c){ doRotate(c,0,-15); $('rot-slider').value=c.rotFine; } });
+  $('rot-cw15') .addEventListener('click', () => { const c=cardById(S.activeCardId); if(c){ doRotate(c,0,+15); $('rot-slider').value=c.rotFine; } });
+  $('rot-slider').addEventListener('input', e => {
+    const c=cardById(S.activeCardId); if(!c) return;
+    c.rotFine = +e.target.value; c.cropCanvas = null; updateRotAngleDisplay(c);
+  });
+
+  // Export
+  $('btn-csv').addEventListener('click', exportCSV);
+  $('btn-json').addEventListener('click', exportJSON);
+  $('btn-vcf').addEventListener('click', exportVCF);
+
+  // Canvas overlay mouse events
+  setupOverlayEvents();
+
+  // Re-sync canvas on window resize
+  window.addEventListener('resize', () => { if (S.activePhotoId) renderOverlay(); });
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
