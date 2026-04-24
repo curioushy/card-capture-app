@@ -53,6 +53,9 @@ main{flex:1;overflow:hidden}
 .det-panel-head{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
 .det-panel-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
 .det-panel-foot{padding:14px 16px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
+.lang-toggle{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--text);cursor:pointer;padding:6px 8px;background:var(--bg);border-radius:6px;line-height:1.4}
+.lang-toggle input{margin-top:2px;flex-shrink:0}
+.lang-hint{color:var(--muted);font-size:11px;display:block}
 .photo-nav,.card-nav{display:flex;align-items:center;gap:8px;font-size:13px}
 .card-nav{justify-content:center}
 .nav-lbl{flex:1;text-align:center;font-size:13px;color:var(--muted)}
@@ -210,6 +213,7 @@ tr:last-child td{border-bottom:none}
           </div>
         </div>
         <div class="det-panel-foot">
+          <label class="lang-toggle"><input type="checkbox" id="useCJKChk"> Include Chinese characters <span class="lang-hint">(slower; only enable if cards have Chinese)</span></label>
           <button class="btn btn-outline btn-full" id="addManualBtn">+ Add card manually</button>
           <button class="btn btn-primary btn-full" id="confirmCardsBtn" disabled>Confirm 0 cards →</button>
         </div>
@@ -280,6 +284,7 @@ const S = {
   ocrResults: [],    // [{fields, cropCanvas}] after OCR
   contacts: [],      // saved contacts
   currentConfirmIdx: 0,
+  useCJK: false,     // OCR language — default English-only (chi_sim hallucinates on pure English cards)
 };
 
 // ── DOM helpers ───────────────────────────────────────────────────────────────
@@ -662,6 +667,11 @@ function initDetect() {
   const adjAngle    = $('adjAngle');
   const cropModeBtn = $('cropModeBtn');
   const resetAdjBtn = $('resetAdjBtn');
+  const useCJKChk   = $('useCJKChk');
+  if (useCJKChk) {
+    useCJKChk.checked = !!S.useCJK;
+    useCJKChk.addEventListener('change', () => { S.useCJK = useCJKChk.checked; });
+  }
 
   let drag = null;   // {cornerIdx, card}
   let manualMode = false;
@@ -1132,7 +1142,8 @@ function initDetect() {
 }
 
 // ── Tesseract / OCR ───────────────────────────────────────────────────────────
-let tWorker = null;
+let tWorkerEng = null;
+let tWorkerCJK = null;
 
 async function loadTesseract() {
   if (window.Tesseract) return;
@@ -1144,19 +1155,72 @@ async function loadTesseract() {
   });
 }
 
-async function ensureTesseract(onProgress) {
+async function ensureWorker(useCJK, onProgress) {
   await loadTesseract();
-  if (!tWorker) {
-    if (onProgress) onProgress('Loading language model…');
-    tWorker = await Tesseract.createWorker('eng+chi_sim', 1, {
+  const langs = useCJK ? 'eng+chi_sim' : 'eng';
+  let w = useCJK ? tWorkerCJK : tWorkerEng;
+  if (!w) {
+    if (onProgress) onProgress(useCJK ? 'Loading Chinese + English model…' : 'Loading English model…');
+    w = await Tesseract.createWorker(langs, 1, {
       logger: m => { if (m.status === 'recognizing text' && onProgress) onProgress(null, m.progress); }
     });
+    await w.setParameters({
+      tessedit_pageseg_mode: '6',          // PSM 6 — assume single uniform block of text
+      preserve_interword_spaces: '1',
+    });
+    if (useCJK) tWorkerCJK = w; else tWorkerEng = w;
   }
+  return w;
 }
 
-async function runOCR(canvas) {
-  const { data } = await tWorker.recognize(canvas);
-  return { text: data.text, words: data.words || [] };
+// Tier A preprocessing: upscale to ~300 DPI equivalent + grayscale + contrast stretch.
+// Tesseract is calibrated for ~300 DPI; phone-dewarped cards are often 600–1000px on long edge.
+function preprocessForOCR(canvas) {
+  const targetMax = 1800;
+  const curMax = Math.max(canvas.width, canvas.height);
+  const scale = curMax < targetMax ? Math.min(3, targetMax / curMax) : 1;
+  const W = Math.round(canvas.width * scale);
+  const H = Math.round(canvas.height * scale);
+
+  const out = document.createElement('canvas');
+  out.width = W; out.height = H;
+  const ctx = out.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(canvas, 0, 0, W, H);
+
+  const img = ctx.getImageData(0, 0, W, H);
+  const d = img.data;
+
+  // Build luminance histogram for percentile-based contrast stretch (robust to outliers)
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < d.length; i += 4) {
+    const y = (0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]) | 0;
+    hist[y]++;
+  }
+  const total = (d.length / 4) | 0;
+  const lowCut = total * 0.01, highCut = total * 0.99;
+  let acc = 0, lo = 0, hi = 255;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= lowCut) { lo = v; break; } }
+  acc = 0;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= highCut) { hi = v; break; } }
+  const range = Math.max(1, hi - lo);
+
+  for (let i = 0; i < d.length; i += 4) {
+    const y = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+    let s = ((y - lo) / range) * 255;
+    if (s < 0) s = 0; else if (s > 255) s = 255;
+    d[i] = d[i+1] = d[i+2] = s;
+  }
+  ctx.putImageData(img, 0, 0);
+  return out;
+}
+
+async function runOCR(canvas, useCJK) {
+  const pre = preprocessForOCR(canvas);
+  const w = useCJK ? tWorkerCJK : tWorkerEng;
+  const { data } = await w.recognize(pre);
+  return { text: data.text, words: data.words || [], confidence: data.confidence };
 }
 
 async function runOCRBatch(cards) {
@@ -1165,8 +1229,10 @@ async function runOCRBatch(cards) {
   $('progFill').style.width = '0%';
   $('procMsg').textContent = 'Initialising recognition engine…';
 
+  const useCJK = !!(S && S.useCJK);
+
   try {
-    await ensureTesseract(msg => { if (msg) $('procMsg').textContent = msg; });
+    await ensureWorker(useCJK, msg => { if (msg) $('procMsg').textContent = msg; });
   } catch(err) {
     showToast('Tesseract load failed — ' + err.message, 5000);
     showScreen('screen-detect');
@@ -1178,7 +1244,7 @@ async function runOCRBatch(cards) {
     $('procMsg').textContent = `Processing card ${i+1} of ${cards.length}…`;
     $('progFill').style.width = ((i / cards.length) * 80) + '%';
     try {
-      const { text } = await runOCR(cards[i].cropCanvas);
+      const { text } = await runOCR(cards[i].cropCanvas, useCJK);
       S.ocrResults.push({ fields: parseFields(text, cards[i].cropCanvas), cropCanvas: cards[i].cropCanvas });
     } catch(e) {
       S.ocrResults.push({ fields: emptyFields(), cropCanvas: cards[i].cropCanvas });
