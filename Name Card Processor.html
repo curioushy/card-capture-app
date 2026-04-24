@@ -5,1145 +5,1124 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Name Card Processor</title>
 <style>
+/* ── Variables ── */
 :root {
-  --bg: #f0f2f5;
-  --surface: #fff;
-  --border: #e0e0e0;
-  --text: #1a1a1a;
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --border: #e1e4e8;
+  --text: #1a1a2e;
   --muted: #6b7280;
   --accent: #1d6f42;
-  --accent-h: #155c35;
-  --accent-lt: #e8f5ee;
-  --danger: #e74c3c;
-  --warn: #e67e22;
-  --ok: #2ecc71;
-  --r: 10px;
-  --r-sm: 6px;
-  --sh: 0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.06);
+  --accent-light: #e8f5ee;
+  --green: #22c55e;
+  --green-bg: #f0fdf4;
+  --red: #ef4444;
+  --red-bg: #fef2f2;
+  --blue: #3b82f6;
+  --blue-bg: #eff6ff;
+  --header: #1a1a2e;
+  --radius: 8px;
+  --radius-sm: 5px;
+  --shadow: 0 1px 4px rgba(0,0,0,0.08);
 }
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden}
-#app{display:flex;flex-direction:column;height:100vh}
-header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;gap:10px;flex-shrink:0}
-.logo{font-weight:700;font-size:15px;color:var(--accent)}
-.crumb{color:var(--muted);font-size:13px}
-main{flex:1;overflow:hidden}
-.screen{display:none;height:100%}
-.screen.active{display:flex;flex-direction:column}
 
-/* ── Upload ── */
-#screen-upload{align-items:center;justify-content:center;gap:16px;padding:32px;overflow:auto}
-.upload-zone{border:2px dashed var(--border);border-radius:var(--r);padding:52px 40px;text-align:center;cursor:pointer;transition:all .2s;background:var(--surface);max-width:560px;width:100%}
-.upload-zone:hover,.upload-zone.over{border-color:var(--accent);background:var(--accent-lt)}
-.upload-icon{font-size:40px;margin-bottom:12px}
-.upload-zone h2{font-size:18px;margin-bottom:6px}
-.upload-zone p{color:var(--muted);font-size:13px}
-.photo-grid{display:flex;flex-wrap:wrap;gap:8px;max-width:560px;width:100%}
-.photo-thumb{position:relative;width:80px;height:60px;border-radius:var(--r-sm);overflow:hidden;box-shadow:var(--sh)}
-.photo-thumb img{width:100%;height:100%;object-fit:cover}
-.photo-thumb .rm{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;line-height:1}
-.upload-act{max-width:560px;width:100%;display:flex;justify-content:flex-end}
+/* ── Reset ── */
+*,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+html,body { height: 100%; overflow: hidden; }
+body { font: 13px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: var(--text); background: var(--bg); }
+button { font: inherit; cursor: pointer; }
+input,textarea { font: inherit; }
 
-/* ── Detect ── */
-#screen-detect{flex-direction:row}
-.det-photo{flex:1;position:relative;background:#111;overflow:hidden;display:flex;align-items:center;justify-content:center}
-.det-photo img{max-width:100%;max-height:100%;display:block}
-.det-photo canvas{position:absolute;cursor:default}
-.det-panel{width:340px;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;flex-shrink:0}
-.det-panel-head{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
-.det-panel-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
-.det-panel-foot{padding:14px 16px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
-.lang-toggle{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--text);cursor:pointer;padding:6px 8px;background:var(--bg);border-radius:6px;line-height:1.4}
-.lang-toggle input{margin-top:2px;flex-shrink:0}
-.lang-hint{color:var(--muted);font-size:11px;display:block}
-.photo-nav,.card-nav{display:flex;align-items:center;gap:8px;font-size:13px}
-.card-nav{justify-content:center}
-.nav-lbl{flex:1;text-align:center;font-size:13px;color:var(--muted)}
-.det-crop{width:100%;background:#f5f5f5;border-radius:var(--r-sm);overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:80px}
-.det-crop canvas,.det-crop img{max-width:100%;max-height:200px;display:block}
-.conf-badge{font-size:12px;padding:2px 0}
-.det-btns{display:flex;gap:8px}
-.adj-section{border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:7px}
-.adj-label{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
-.adj-rotate{display:flex;align-items:center;gap:4px}
-.adj-btn{padding:3px 7px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--bg);cursor:pointer;color:var(--text);font-family:inherit;flex-shrink:0;line-height:1.4}
-.adj-btn:hover{border-color:var(--accent);color:var(--accent)}
-.rot-slider{flex:1;accent-color:var(--accent);min-width:0}
-.adj-angle{font-size:11px;color:var(--muted);text-align:center}
-.adj-actions{display:flex;gap:6px}
+/* ── App shell ── */
+#app { display: flex; flex-direction: column; height: 100vh; }
 
-/* ── Processing ── */
-#screen-processing{align-items:center;justify-content:center;gap:16px}
-.proc-title{font-size:18px;font-weight:600}
-.proc-sub{color:var(--muted);font-size:14px}
-.prog-bar{width:300px;height:8px;background:var(--border);border-radius:4px;overflow:hidden}
-.prog-fill{height:100%;background:var(--accent);border-radius:4px;transition:width .3s}
+#app-header {
+  flex-shrink: 0; height: 46px; background: var(--header); color: #fff;
+  display: flex; align-items: center; padding: 0 16px; gap: 12px;
+  user-select: none;
+}
+.hdr-title { font-size: 14px; font-weight: 600; letter-spacing: 0.03em; }
+.hdr-sep { color: #444; }
+.hdr-status { font-size: 11px; color: #888; }
+.hdr-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 
-/* ── Confirm ── */
-#screen-confirm{flex-direction:row}
-.conf-img-col{flex:1;background:#111;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:20px;overflow:hidden}
-.conf-img-col canvas{max-width:100%;max-height:calc(100% - 48px);object-fit:contain;border-radius:var(--r-sm)}
-.conf-img-nav{display:flex;align-items:center;gap:10px;color:#fff;font-size:13px}
-.conf-fields-col{width:380px;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;flex-shrink:0}
-.conf-fields-head{padding:14px 16px;border-bottom:1px solid var(--border);font-weight:600;font-size:14px}
-.conf-fields-body{flex:1;overflow-y:auto;padding:16px}
-.conf-fields-foot{padding:14px 16px;border-top:1px solid var(--border);display:flex;gap:8px}
-.f-row{margin-bottom:13px}
-.f-label{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
-.f-input{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r-sm);font-size:13px;font-family:inherit;transition:border-color .15s}
-.f-input:focus{outline:none;border-color:var(--accent)}
-.f-input.warn{border-color:var(--warn);background:#fff9f0}
-.chip-wrap{display:flex;flex-wrap:wrap;gap:5px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--r-sm);min-height:36px;cursor:text;align-items:center}
-.chip-wrap:focus-within{border-color:var(--accent)}
-.chip{display:inline-flex;align-items:center;gap:3px;background:var(--accent-lt);color:var(--accent);padding:2px 7px;border-radius:20px;font-size:12px}
-.chip button{background:none;border:none;cursor:pointer;color:var(--accent);padding:0;font-size:13px;line-height:1;margin-left:1px}
-.chip-in{border:none;outline:none;background:transparent;font-size:13px;font-family:inherit;flex:1;min-width:60px}
+/* ── Three-panel layout ── */
+.panels {
+  display: grid;
+  grid-template-columns: 300px 360px 1fr;
+  flex: 1; overflow: hidden;
+}
 
-/* ── Results ── */
-#screen-results{flex-direction:column}
-.res-head{padding:14px 24px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
-.res-title{font-weight:600;font-size:15px}
-.res-actions{display:flex;gap:8px}
-.res-body{flex:1;overflow:auto;padding:20px 24px}
-table{width:100%;border-collapse:collapse;background:var(--surface);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh)}
-thead{background:var(--bg)}
-th{padding:9px 12px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);border-bottom:1px solid var(--border)}
-td{padding:9px 12px;font-size:13px;border-bottom:1px solid var(--border);vertical-align:middle}
-tr:last-child td{border-bottom:none}
-.thumb-img{width:52px;height:32px;object-fit:cover;border-radius:4px}
-.empty-row td{text-align:center;color:var(--muted);padding:40px}
+.panel {
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--surface); border-right: 1px solid var(--border);
+}
+.panel:last-child { border-right: none; }
 
-/* ── Shared buttons ── */
-.btn{padding:8px 16px;border-radius:var(--r-sm);font-size:13px;font-weight:500;cursor:pointer;border:none;font-family:inherit;transition:all .15s;white-space:nowrap}
-.btn-primary{background:var(--accent);color:#fff}
-.btn-primary:hover:not(:disabled){background:var(--accent-h)}
-.btn-primary:disabled{opacity:.4;cursor:default}
-.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}
-.btn-outline:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
-.btn-ghost{background:transparent;border:none;color:var(--muted)}
-.btn-ghost:hover{color:var(--text)}
-.btn-full{width:100%}
-.nav-btn{width:30px;height:30px;border-radius:50%;background:var(--bg);border:1px solid var(--border);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;color:var(--muted);flex-shrink:0}
-.nav-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
-.nav-btn:disabled{opacity:.3;cursor:default}
-.nav-btn-inv{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.3);color:#fff}
-.nav-btn-inv:hover:not(:disabled){background:rgba(255,255,255,.25);border-color:#fff;color:#fff}
+.panel-head {
+  flex-shrink: 0; padding: 0 14px; height: 42px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+}
+.panel-head-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.panel-head-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 
-/* ── Loading states ── */
-.spinner{width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.loading-state{display:flex;flex-direction:column;align-items:center;gap:10px;padding:24px;color:var(--muted);font-size:13px}
+.panel-body { flex: 1; overflow-y: auto; }
 
-/* ── Toast ── */
-#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(60px);background:#1a1a1a;color:#fff;padding:9px 18px;border-radius:8px;font-size:13px;opacity:0;transition:all .22s;pointer-events:none;z-index:9999;white-space:nowrap}
-#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+/* ── Buttons ── */
+.btn {
+  padding: 5px 11px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); font-size: 12px; transition: background .12s, border-color .12s;
+  white-space: nowrap;
+}
+.btn:disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
+.btn:hover:not(:disabled) { background: var(--bg); border-color: #aaa; }
+.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-primary:hover:not(:disabled) { background: #155e35; border-color: #155e35; }
+.btn-danger { background: var(--red); color: #fff; border-color: var(--red); }
+.btn-sm { padding: 3px 8px; font-size: 11px; }
+.btn-icon { padding: 4px 6px; font-size: 13px; border-radius: var(--radius-sm); border: 1px solid transparent; background: none; }
+.btn-icon:hover { background: var(--bg); border-color: var(--border); }
+.btn-full { width: 100%; }
+
+/* ── Upload zone ── */
+.upload-zone {
+  margin: 20px; border: 2px dashed var(--border); border-radius: var(--radius);
+  padding: 36px 20px; text-align: center; cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+.upload-zone.drag-over, .upload-zone:hover { border-color: var(--accent); background: var(--accent-light); }
+.upload-icon { font-size: 36px; margin-bottom: 10px; }
+.upload-label { color: var(--muted); line-height: 1.6; }
+.upload-sub { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+/* ── Photo strip ── */
+.photo-strip {
+  display: flex; gap: 6px; padding: 10px 12px;
+  overflow-x: auto; border-bottom: 1px solid var(--border);
+  background: var(--bg); flex-shrink: 0;
+}
+.thumb {
+  position: relative; flex-shrink: 0; width: 52px; height: 52px;
+  border-radius: 6px; overflow: hidden; cursor: pointer;
+  border: 2px solid transparent; transition: border-color .15s;
+}
+.thumb.active { border-color: var(--accent); }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb-del {
+  position: absolute; top: 1px; right: 1px; width: 15px; height: 15px;
+  background: rgba(0,0,0,.65); color: #fff; border-radius: 50%;
+  font-size: 9px; display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity .15s; cursor: pointer; border: none;
+}
+.thumb:hover .thumb-del { opacity: 1; }
+.thumb-add {
+  flex-shrink: 0; width: 52px; height: 52px; border-radius: 6px;
+  border: 2px dashed var(--border); display: flex; align-items: center;
+  justify-content: center; font-size: 22px; color: var(--muted); cursor: pointer;
+  transition: border-color .15s, color .15s;
+}
+.thumb-add:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Photo viewport ── */
+.photo-viewport { position: relative; width: 100%; flex-shrink: 0; }
+.photo-viewport img { width: 100%; display: block; user-select: none; -webkit-user-drag: none; }
+.photo-viewport canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+
+/* ── Detection status ── */
+.det-status {
+  flex-shrink: 0; padding: 5px 12px; font-size: 11px; color: var(--muted);
+  display: flex; align-items: center; gap: 6px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+.spinner {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid var(--border); border-top-color: var(--accent);
+  animation: spin .7s linear infinite; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Card list ── */
+.card-list { flex-shrink: 0; border-top: 1px solid var(--border); }
+.card-list-hd {
+  padding: 7px 12px 4px; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--muted);
+}
+.card-item {
+  display: flex; align-items: center; gap: 8px; padding: 5px 12px;
+  cursor: pointer; transition: background .12s; border-radius: 0;
+}
+.card-item:hover { background: var(--bg); }
+.card-item.active-card { background: var(--accent-light); }
+.card-badge {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--green); color: #fff; font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.card-badge.rejected { background: var(--red); }
+.card-badge.manual { background: var(--blue); }
+.card-label { flex: 1; font-size: 12px; }
+.card-ocr-status { font-size: 10px; color: var(--muted); }
+.card-btns { display: flex; gap: 3px; }
+
+/* ── Scan controls ── */
+.scan-controls {
+  flex-shrink: 0; padding: 10px 12px; border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.lang-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.lang-row input { margin: 0; }
+
+/* ── Rotate controls ── */
+.rot-controls {
+  flex-shrink: 0; padding: 8px 12px; border-top: 1px solid var(--border);
+  background: var(--bg); display: none;
+}
+.rot-controls.visible { display: block; }
+.rot-label { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 6px; }
+.rot-row { display: flex; align-items: center; gap: 4px; }
+.rot-row input[type=range] { flex: 1; }
+.rot-angle { font-size: 11px; color: var(--muted); min-width: 40px; text-align: right; }
+
+/* ── Tokens panel ── */
+.tokens-empty { padding: 40px 16px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.token-group { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.token-group-title { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 7px; }
+.token-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.token-chip {
+  padding: 3px 9px; border-radius: 20px; border: 1px solid var(--border);
+  font-size: 12px; cursor: grab; background: var(--surface); user-select: none;
+  transition: background .1s, border-color .1s; display: flex; align-items: center; gap: 4px;
+}
+.token-chip:active { cursor: grabbing; }
+.token-chip:hover { background: var(--accent-light); border-color: var(--accent); }
+.token-chip.assigned { background: var(--green-bg); border-color: var(--green); }
+.token-chip.src-active { background: var(--blue-bg); border-color: var(--blue); }
+.token-src { font-size: 9px; color: var(--muted); background: var(--bg); padding: 1px 4px; border-radius: 3px; }
+.token-lines { display: flex; flex-direction: column; gap: 4px; }
+.token-line {
+  padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+  font-size: 12px; cursor: grab; background: var(--surface); user-select: none;
+  transition: background .1s, border-color .1s; display: flex; align-items: center; justify-content: space-between;
+}
+.token-line:active { cursor: grabbing; }
+.token-line:hover { background: var(--accent-light); border-color: var(--accent); }
+.token-line.assigned { background: var(--green-bg); border-color: var(--green); }
+.token-line.src-active { background: var(--blue-bg); border-color: var(--blue); }
+.token-line-val { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Contacts panel ── */
+.contacts-empty { padding: 40px 16px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.contact-row {
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  cursor: pointer; transition: background .12s;
+}
+.contact-row:hover { background: var(--bg); }
+.contact-row.active-contact { background: var(--accent-light); }
+.contact-hd { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.contact-num {
+  width: 26px; height: 26px; border-radius: 50%; background: var(--accent);
+  color: #fff; font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.contact-name { font-weight: 500; font-size: 13px; }
+.contact-company { font-size: 11px; color: var(--muted); }
+.contact-fields { display: grid; grid-template-columns: 72px 1fr; gap: 2px 8px; }
+.cf-label { font-size: 11px; color: var(--muted); text-align: right; padding: 2px 0; align-self: start; padding-top: 4px; }
+.cf-val {
+  font-size: 12px; padding: 2px 6px; border-radius: 4px;
+  border: 1px solid transparent; min-height: 22px; outline: none;
+  transition: border-color .12s, background .12s;
+}
+.cf-val:hover { border-color: var(--border); background: var(--bg); }
+.cf-val:focus { border-color: var(--accent); background: var(--surface); }
+.cf-val.drop-ready { border: 1.5px dashed var(--accent); background: var(--accent-light); }
+.cf-val.drop-hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+.chip-list { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 0; }
+.chip {
+  padding: 2px 7px 2px 8px; border-radius: 20px; background: var(--bg);
+  border: 1px solid var(--border); font-size: 11px; display: flex; align-items: center; gap: 3px;
+}
+.chip-del { background: none; border: none; color: var(--muted); cursor: pointer; padding: 0; font-size: 12px; line-height: 1; }
+.chip-del:hover { color: var(--red); }
+.chip-add {
+  padding: 2px 8px; border-radius: 20px; background: none; border: 1px dashed var(--border);
+  font-size: 11px; color: var(--muted); cursor: pointer;
+}
+.chip-add:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Misc ── */
+.toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  background: #1a1a2e; color: #fff; padding: 9px 18px; border-radius: var(--radius);
+  font-size: 13px; z-index: 9999; opacity: 0; transition: opacity .2s; pointer-events: none;
+}
+.toast.show { opacity: 1; }
+.empty-state { padding: 40px 16px; text-align: center; color: var(--muted); font-size: 13px; }
+.badge { display: inline-block; padding: 1px 6px; border-radius: 10px; font-size: 10px; font-weight: 600; }
+.badge-green { background: var(--green-bg); color: #16a34a; }
+.badge-red { background: var(--red-bg); color: #dc2626; }
+.badge-blue { background: var(--blue-bg); color: #2563eb; }
+.ocr-running { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); padding: 6px 12px; }
 </style>
 </head>
 <body>
+
+<input type="file" id="fileInput" accept="image/*" multiple style="display:none">
+<div class="toast" id="toast"></div>
+
 <div id="app">
-  <header>
-    <span class="logo">Name Card Processor</span>
-    <span class="crumb" id="crumb"></span>
+  <header id="app-header">
+    <div class="hdr-title">Name Card Processor</div>
+    <span class="hdr-sep">·</span>
+    <div class="hdr-status" id="hdr-status"></div>
+    <div class="hdr-right">
+      <button class="btn btn-sm" id="btn-clear-all" style="background:none;border-color:#444;color:#ccc">✕ Clear All</button>
+    </div>
   </header>
-  <main>
 
-    <!-- Upload -->
-    <section id="screen-upload" class="screen active">
-      <div class="upload-zone" id="uploadZone">
-        <div class="upload-icon">🗂</div>
-        <h2>Drop photos here</h2>
-        <p>or click to browse &nbsp;·&nbsp; JPEG, PNG, HEIC</p>
-        <input id="fileInput" type="file" accept="image/*" multiple style="display:none">
-      </div>
-      <div class="photo-grid" id="photoGrid"></div>
-      <div class="upload-act" id="uploadAct" style="display:none">
-        <button class="btn btn-primary" id="processBtn">Process 0 Photos →</button>
-      </div>
-    </section>
+  <div class="panels">
 
-    <!-- Detect -->
-    <section id="screen-detect" class="screen">
-      <div class="det-photo" id="detPhotoCol">
-        <img id="detImg" alt="">
-        <canvas id="overlayCvs"></canvas>
-      </div>
-      <div class="det-panel">
-        <div class="det-panel-head">
-          <div class="photo-nav" id="photoNav">
-            <button class="nav-btn" id="prevPhotoBtn">‹</button>
-            <span class="nav-lbl" id="photoLbl">Photo 1 of 1</span>
-            <button class="nav-btn" id="nextPhotoBtn">›</button>
-          </div>
+    <!-- ── Panel 1: Scan ──────────────────────────────── -->
+    <aside class="panel" id="panel-scan">
+      <div class="panel-head">
+        <span class="panel-head-title">Scan</span>
+        <div class="panel-head-right">
+          <button class="btn btn-sm" id="btn-redetect" style="display:none">↺ Re-detect</button>
         </div>
-        <div class="det-panel-body" id="detPanelBody">
-          <div class="loading-state" id="detLoading">
-            <div class="spinner"></div>
-            <span id="detLoadMsg">Scanning card borders…</span>
-          </div>
-          <div id="detCardState" style="display:none;flex-direction:column;gap:12px">
-            <div class="card-nav">
-              <button class="nav-btn" id="prevCardBtn">‹</button>
-              <span class="nav-lbl" id="cardLbl">Card 1 of 1</span>
-              <button class="nav-btn" id="nextCardBtn">›</button>
+      </div>
+      <div class="panel-body" id="scan-body" style="display:flex;flex-direction:column;overflow:hidden;">
+
+        <!-- Upload zone -->
+        <div class="upload-zone" id="upload-zone">
+          <div class="upload-icon">📷</div>
+          <div class="upload-label">Drop images here or click to browse</div>
+          <div class="upload-sub">Paste with Cmd+V · Multiple files OK</div>
+        </div>
+
+        <!-- Scan content (hidden until photos loaded) -->
+        <div id="scan-content" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
+          <div class="photo-strip" id="photo-strip"></div>
+          <div style="flex:1;overflow-y:auto;" id="scan-scroll">
+            <div class="photo-viewport" id="photo-viewport">
+              <img id="active-photo" alt="" draggable="false">
+              <canvas id="overlay-canvas"></canvas>
             </div>
-            <div class="det-crop" id="detCrop"></div>
-            <div class="conf-badge" id="detBadge"></div>
-            <div class="det-btns">
-              <button class="btn btn-outline" id="skipCardBtn" style="flex:1">Skip</button>
-              <button class="btn btn-primary" id="includeCardBtn" style="flex:1">✓ Include</button>
-            </div>
-            <div class="adj-section">
-              <div class="adj-label">Adjust crop</div>
-              <div class="adj-rotate">
-                <button class="adj-btn" id="rot90ccw" title="Rotate 90° CCW">↺90°</button>
-                <button class="adj-btn" id="rot15ccw" title="Rotate 15° CCW">↺15°</button>
-                <input type="range" id="rotSlider" min="-45" max="45" value="0" step="0.5" class="rot-slider">
-                <button class="adj-btn" id="rot15cw" title="Rotate 15° CW">↻15°</button>
-                <button class="adj-btn" id="rot90cw" title="Rotate 90° CW">↻90°</button>
+            <div class="det-status" id="det-status">Ready</div>
+            <div class="rot-controls" id="rot-controls">
+              <div class="rot-label">Rotate selected card</div>
+              <div class="rot-row">
+                <button class="btn btn-icon" id="rot-ccw90">↺90°</button>
+                <button class="btn btn-icon" id="rot-ccw15">↺15°</button>
+                <input type="range" id="rot-slider" min="-45" max="45" value="0" step="0.5">
+                <button class="btn btn-icon" id="rot-cw15">↻15°</button>
+                <button class="btn btn-icon" id="rot-cw90">↻90°</button>
+                <span class="rot-angle" id="rot-angle">0°</span>
               </div>
-              <div class="adj-angle" id="adjAngle">Fine: 0°  ·  Total: 0°</div>
-              <div class="adj-actions">
-                <button class="btn btn-outline" id="cropModeBtn" style="flex:1">✂ Crop</button>
-                <button class="btn btn-ghost" id="resetAdjBtn">↩ Reset</button>
+            </div>
+            <div class="card-list" id="card-list" style="display:none">
+              <div class="card-list-hd">Detected cards</div>
+              <div id="card-items"></div>
+              <div style="padding:6px 12px 8px">
+                <button class="btn btn-sm btn-full" id="btn-draw-card">+ Draw card manually</button>
               </div>
             </div>
           </div>
-          <div id="detEmpty" style="display:none;color:var(--muted);font-size:13px;text-align:center;padding:24px">
-            No cards found — draw one manually
+          <div class="scan-controls">
+            <label class="lang-row">
+              <input type="checkbox" id="use-cjk"> Include Chinese characters
+            </label>
+            <button class="btn btn-primary btn-sm btn-full" id="btn-ocr-card" disabled>▶ Run OCR on selected card</button>
+            <button class="btn btn-sm btn-full" id="btn-ocr-all" disabled>▶▶ Run OCR on all accepted cards</button>
           </div>
         </div>
-        <div class="det-panel-foot">
-          <label class="lang-toggle"><input type="checkbox" id="useCJKChk"> Include Chinese characters <span class="lang-hint">(slower; only enable if cards have Chinese)</span></label>
-          <button class="btn btn-outline btn-full" id="addManualBtn">+ Add card manually</button>
-          <button class="btn btn-primary btn-full" id="confirmCardsBtn" disabled>Confirm 0 cards →</button>
-        </div>
+
+      </div>
+    </aside>
+
+    <!-- ── Panel 2: OCR Tokens ───────────────────────── -->
+    <section class="panel" id="panel-tokens">
+      <div class="panel-head">
+        <span class="panel-head-title">OCR Tokens</span>
+        <div class="panel-head-right" style="font-size:11px;color:var(--muted)">drag to assign →</div>
+      </div>
+      <div class="panel-body" id="tokens-body">
+        <div class="tokens-empty">Select a card in Panel 1<br>then run OCR to see tokens</div>
       </div>
     </section>
 
-    <!-- Processing -->
-    <section id="screen-processing" class="screen">
-      <div class="spinner" style="width:32px;height:32px;border-width:4px"></div>
-      <div class="proc-title">Running OCR</div>
-      <div class="proc-sub" id="procMsg">Initialising recognition engine…</div>
-      <div class="prog-bar"><div class="prog-fill" id="progFill" style="width:0%"></div></div>
-    </section>
-
-    <!-- Confirm -->
-    <section id="screen-confirm" class="screen">
-      <div class="conf-img-col">
-        <div class="conf-img-nav">
-          <button class="nav-btn nav-btn-inv" id="confPrev">‹</button>
-          <span id="confLbl" style="font-size:13px">Card 1 of 1</span>
-          <button class="nav-btn nav-btn-inv" id="confNext">›</button>
+    <!-- ── Panel 3: Contacts ─────────────────────────── -->
+    <section class="panel" id="panel-contacts">
+      <div class="panel-head">
+        <span class="panel-head-title">Contacts</span>
+        <div class="panel-head-right">
+          <button class="btn btn-sm" id="btn-csv">CSV</button>
+          <button class="btn btn-sm" id="btn-json">JSON</button>
+          <button class="btn btn-sm" id="btn-vcf">vCard</button>
         </div>
-        <canvas id="confCanvas"></canvas>
       </div>
-      <div class="conf-fields-col">
-        <div class="conf-fields-head">Review extracted fields</div>
-        <div class="conf-fields-body" id="confBody"></div>
-        <div class="conf-fields-foot">
-          <button class="btn btn-outline" id="confSkip" style="flex:1">Skip</button>
-          <button class="btn btn-primary" id="confSave" style="flex:2">Save &amp; Next →</button>
-        </div>
+      <div class="panel-body" id="contacts-body">
+        <div class="contacts-empty">Contacts appear here after OCR runs</div>
       </div>
     </section>
 
-    <!-- Results -->
-    <section id="screen-results" class="screen">
-      <div class="res-head">
-        <span class="res-title" id="resTitle">0 contacts</span>
-        <div class="res-actions">
-          <button class="btn btn-outline" id="expCsvBtn">⬇ CSV</button>
-          <button class="btn btn-outline" id="expJsonBtn">⬇ JSON</button>
-          <button class="btn btn-outline" id="expVcfBtn">⬇ vCard</button>
-          <button class="btn btn-ghost" id="startOverBtn">Start over</button>
-        </div>
-      </div>
-      <div class="res-body">
-        <table>
-          <thead><tr>
-            <th></th><th>Name</th><th>Title</th><th>Company</th><th>Email</th><th>Phone</th>
-          </tr></thead>
-          <tbody id="resBody"></tbody>
-        </table>
-      </div>
-    </section>
-
-  </main>
+  </div>
 </div>
-<div id="toast"></div>
 
 <script>
-// ── State ─────────────────────────────────────────────────────────────────────
+'use strict';
+
+// ── State ──────────────────────────────────────────────────────────────────────
 const S = {
-  photos: [],        // [{dataUrl}]
-  photoCards: [],    // per photo: null | [{corners,cropCanvas,confidence,accepted,isManual,isFallback}]
-  allCards: [],      // flat [{photoIdx, card}]
-  currentPhotoIdx: 0,
-  currentCardIdx: 0,
-  ocrResults: [],    // [{fields, cropCanvas}] after OCR
-  contacts: [],      // saved contacts
-  currentConfirmIdx: 0,
-  useCJK: false,     // OCR language — default English-only (chi_sim hallucinates on pure English cards)
+  photos: [],      // [{id, dataUrl, naturalW, naturalH}]
+  cards: [],       // [{id, photoId, num, corners[4], accepted, manual, ocrStatus, rot90, rotFine, cropCanvas}]
+  tokens: [],      // [{id, cardId, kind, value, assignedTo: {contactId,field}|null}]
+  contacts: [],    // [{id, cardId, name, title, company, emails, phones, linkedin, website}]
+  activePhotoId: null,
+  activeCardId: null,
+  useCJK: false,
+  drawMode: false,
+  drawStart: null,
+  drawCurrent: null,
+  cardCounter: 0,
 };
 
-// ── DOM helpers ───────────────────────────────────────────────────────────────
+// ── DOM helpers ────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
-function showToast(msg, dur = 3000) {
-  const t = $('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  clearTimeout(showToast._t);
-  showToast._t = setTimeout(() => t.classList.remove('show'), dur);
-}
-function showScreen(id) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  $(id).classList.add('active');
-}
-function setCrumb(txt) { $('crumb').textContent = txt ? '› ' + txt : ''; }
-function loadImg(url) {
-  return new Promise(res => {
-    const img = new Image();
-    img.onload = () => res(img);
-    img.src = url;
-    if (img.complete && img.naturalWidth) res(img);
-  });
-}
-function dl(filename, url) {
-  const a = document.createElement('a');
-  a.href = url; a.download = filename; a.click();
-}
-function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+let toastTimer = null;
+function toast(msg, dur = 3000) {
+  const el = $('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), dur);
 }
 
-// ── OpenCV loader ─────────────────────────────────────────────────────────────
-let cvReady = null;
-function loadOpenCV() {
-  if (cvReady) return cvReady;
-  cvReady = new Promise((resolve, reject) => {
-    if (window.cv && cv.Mat) { resolve(); return; }
+// ── UUID ───────────────────────────────────────────────────────────────────────
+const uuid = () => crypto.randomUUID();
+
+// ── Photo helpers ──────────────────────────────────────────────────────────────
+function photoById(id) { return S.photos.find(p => p.id === id); }
+function cardById(id) { return S.cards.find(c => c.id === id); }
+function cardsForPhoto(photoId) { return S.cards.filter(c => c.photoId === photoId); }
+function contactByCardId(cardId) { return S.contacts.find(c => c.cardId === cardId); }
+function tokensByCardId(cardId) { return S.tokens.filter(t => t.cardId === cardId); }
+
+function getPhotoScale() {
+  const img = $('active-photo');
+  if (!img || !img.naturalWidth) return 1;
+  return img.offsetWidth / img.naturalWidth;
+}
+
+// ── OpenCV ─────────────────────────────────────────────────────────────────────
+let cvReady = false;
+let cvLoading = false;
+let cvCallbacks = [];
+
+function ensureCV() {
+  return new Promise((res, rej) => {
+    if (cvReady) return res();
+    cvCallbacks.push({ res, rej });
+    if (cvLoading) return;
+    cvLoading = true;
+    setDetStatus('<span class="spinner"></span> Loading OpenCV…', false);
     const s = document.createElement('script');
     s.src = 'https://docs.opencv.org/4.8.0/opencv.js';
     s.async = true;
-    s.onload = () => {
-      if (!window.cv) { reject(new Error('OpenCV missing')); return; }
-      if (cv.Mat) { resolve(); return; }
-      cv['onRuntimeInitialized'] = resolve;
-      const t = setInterval(() => { if (cv.Mat) { clearInterval(t); resolve(); } }, 100);
-      setTimeout(() => { clearInterval(t); reject(new Error('OpenCV timeout')); }, 30000);
-    };
-    s.onerror = () => reject(new Error('OpenCV load failed'));
+    s.onerror = () => cvCallbacks.forEach(cb => cb.rej(new Error('OpenCV load failed')));
     document.head.appendChild(s);
-  });
-  return cvReady;
-}
-
-// ── Detection pipeline (adapted from detect.js) ───────────────────────────────
-function detectCards(imageEl) {
-  if (!window.cv || !cv.Mat) throw new Error('OpenCV not ready');
-
-  const srcFull = cv.imread(imageEl);
-  const fullW = srcFull.cols, fullH = srcFull.rows;
-  const DMAX = 1200;
-  const longest = Math.max(fullW, fullH);
-  const scale = longest > DMAX ? DMAX / longest : 1;
-  const dW = Math.round(fullW * scale), dH = Math.round(fullH * scale);
-
-  let src;
-  if (scale < 1) {
-    src = new cv.Mat();
-    cv.resize(srcFull, src, new cv.Size(dW, dH), 0, 0, cv.INTER_AREA);
-  } else { src = srcFull; }
-
-  const gray = new cv.Mat();
-  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-
-  const minArea = dW * dH * 0.02;
-  const canny   = detectViaCanny(gray, minArea).map(c => ({...c, source:'canny'}));
-  const otsu    = detectViaOtsu(gray, minArea).map(c => ({...c, source:'otsu'}));
-  const adapt   = detectViaAdaptive(gray, minArea).map(c => ({...c, source:'adaptive'}));
-
-  let merged = mergeByIoU([...canny, ...otsu, ...adapt]);
-
-  if (merged.length > 1) {
-    const areas = merged.map(m => m.area).sort((a, b) => a - b);
-    const med = areas[Math.floor(areas.length / 2)];
-    merged = merged.filter(m => m.area <= med * 4 && m.area >= med / 4);
-  }
-
-  const cards = merged.map(m => {
-    const corners = m.corners.map(c => ({x: c.x / scale, y: c.y / scale}));
-    const ordered = orderCorners(corners);
-    const cropCanvas = dewarp(srcFull, ordered, fullW, fullH);
-    return {
-      corners: ordered,
-      cropCanvas,
-      baseCanvas: cropCanvas,
-      area: m.area / (scale * scale),
-      confidence: m.confidence,
-      sources: [...m.sources],
+    // OpenCV sets cv['onRuntimeInitialized']
+    s.onload = () => {
+      if (typeof cv === 'undefined') { cvCallbacks.forEach(cb => cb.rej(new Error('cv undefined'))); return; }
+      if (cv.getBuildInformation) { cvReady = true; cvCallbacks.forEach(cb => cb.res()); cvCallbacks = []; return; }
+      cv['onRuntimeInitialized'] = () => { cvReady = true; cvCallbacks.forEach(cb => cb.res()); cvCallbacks = []; };
     };
   });
-
-  cards.sort((a, b) => b.confidence - a.confidence || b.area - a.area);
-
-  if (scale < 1) src.delete();
-  srcFull.delete();
-  gray.delete();
-
-  if (cards.length === 0) {
-    const fc = document.createElement('canvas');
-    fc.width = fullW; fc.height = fullH;
-    const tmp = cv.imread(imageEl); cv.imshow(fc, tmp); tmp.delete();
-    return [{
-      corners: [{x:0,y:0},{x:fullW-1,y:0},{x:fullW-1,y:fullH-1},{x:0,y:fullH-1}],
-      cropCanvas: fc, baseCanvas: fc, area: fullW*fullH, confidence: 0, sources: [], isFallback: true,
-    }];
-  }
-  return cards;
 }
 
-function detectViaOtsu(gray, minArea) {
-  const bin = new cv.Mat();
-  cv.threshold(gray, bin, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
-  const k = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5,5));
-  const cl = new cv.Mat();
-  cv.morphologyEx(bin, cl, cv.MORPH_CLOSE, k);
-  const r = extractCandidates(cl, minArea);
-  bin.delete(); cl.delete(); k.delete();
-  return r;
+// ── Gamma LUT helper ───────────────────────────────────────────────────────────
+function buildGammaLut(gamma) {
+  const data = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) data[i] = Math.min(255, Math.round(Math.pow(i / 255, gamma) * 255));
+  return cv.matFromArray(1, 256, cv.CV_8UC1, data);
 }
 
-function detectViaAdaptive(gray, minArea) {
-  const bin = new cv.Mat();
-  cv.adaptiveThreshold(gray, bin, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 51, 5);
-  const k = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(7,7));
-  const cl = new cv.Mat();
-  cv.morphologyEx(bin, cl, cv.MORPH_CLOSE, k);
-  const r = extractCandidates(cl, minArea);
-  bin.delete(); cl.delete(); k.delete();
-  return r;
-}
-
-function detectViaCanny(gray, minArea) {
-  const blurred = new cv.Mat();
-  cv.GaussianBlur(gray, blurred, new cv.Size(5,5), 0);
-  const cards = [];
-  for (const [lo, hi] of [[30,90],[50,150],[80,200]]) {
-    const edges = new cv.Mat();
-    cv.Canny(blurred, edges, lo, hi);
-    const k = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3,3));
-    const dil = new cv.Mat();
-    cv.dilate(edges, dil, k);
-    cards.push(...extractCandidates(dil, minArea));
-    edges.delete(); dil.delete(); k.delete();
-  }
-  blurred.delete();
-  return cards;
-}
-
-function extractCandidates(binary, minArea) {
-  const contours = new cv.MatVector(), hierarchy = new cv.Mat();
-  cv.findContours(binary, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-  const maxArea = binary.cols * binary.rows * 0.5;
-  const cards = [];
-  for (let i = 0; i < contours.size(); i++) {
-    const cnt = contours.get(i);
-    const area = cv.contourArea(cnt);
-    if (area < minArea || area > maxArea) { cnt.delete(); continue; }
-    const peri = cv.arcLength(cnt, true);
-    const approx = new cv.Mat();
-    cv.approxPolyDP(cnt, approx, 0.03 * peri, true);
-    let corners4 = null;
-    if (approx.rows >= 4 && approx.rows <= 8) {
-      const raw = [];
-      for (let j = 0; j < approx.rows; j++)
-        raw.push({x: approx.data32S[j*2], y: approx.data32S[j*2+1]});
-      corners4 = approx.rows === 4 ? raw : reduceToFour(raw);
-    } else {
-      const rect = cv.minAreaRect(cnt);
-      const w = rect.size.width, h = rect.size.height;
-      if (w > 0 && h > 0) {
-        const asp = Math.max(w,h) / Math.min(w,h);
-        if (asp >= 1.3 && asp <= 2.5) {
-          const box = cv.RotatedRect.points(rect);
-          corners4 = box.map(p => ({x:p.x,y:p.y}));
-        }
+// ── Per-variant preprocessing (all produce grayscale Mat) ─────────────────────
+function applyVariant(grayMat, variant) {
+  const out = new cv.Mat();
+  try {
+    switch (variant) {
+      case 'original':    grayMat.copyTo(out); break;
+      case 'gamma_brt': { const lut = buildGammaLut(0.7);  cv.LUT(grayMat, lut, out); lut.delete(); break; }
+      case 'gamma_drk': { const lut = buildGammaLut(1.4);  cv.LUT(grayMat, lut, out); lut.delete(); break; }
+      case 'clahe': {
+        const clahe = cv.createCLAHE(3.0, new cv.Size(8, 8));
+        clahe.apply(grayMat, out); clahe.delete(); break;
       }
-    }
-    if (corners4) {
-      const bb = bbox(corners4);
-      const bw = bb.x2-bb.x1, bh = bb.y2-bb.y1;
-      if (bw > 0 && bh > 0) {
-        const asp = Math.max(bw,bh) / Math.min(bw,bh);
-        if (asp >= 1.3 && asp <= 2.8) cards.push({corners: corners4, area});
+      case 'histeq':   cv.equalizeHist(grayMat, out); break;
+      case 'bilateral': cv.bilateralFilter(grayMat, out, 9, 75, 75); break;
+      case 'unsharp': {
+        const blurred = new cv.Mat();
+        cv.GaussianBlur(grayMat, blurred, new cv.Size(0, 0), 3);
+        cv.addWeighted(grayMat, 1.5, blurred, -0.5, 0, out);
+        blurred.delete(); break;
       }
+      default: grayMat.copyTo(out);
     }
-    approx.delete(); cnt.delete();
-  }
-  contours.delete(); hierarchy.delete();
-  return cards;
-}
-
-function mergeByIoU(all) {
-  const sorted = [...all].sort((a,b) => b.area - a.area);
-  const groups = [];
-  for (const c of sorted) {
-    const b = bbox(c.corners);
-    const match = groups.find(g => iou(b, g.box) > 0.5);
-    if (match) match.sources.add(c.source);
-    else groups.push({corners: c.corners, area: c.area, box: b, sources: new Set([c.source])});
-  }
-  return groups.map(g => ({corners: g.corners, area: g.area, sources: g.sources, confidence: g.sources.size}));
-}
-
-function iou(a, b) {
-  const ix = Math.max(0, Math.min(a.x2,b.x2) - Math.max(a.x1,b.x1));
-  const iy = Math.max(0, Math.min(a.y2,b.y2) - Math.max(a.y1,b.y1));
-  const inter = ix * iy;
-  const u = (a.x2-a.x1)*(a.y2-a.y1) + (b.x2-b.x1)*(b.y2-b.y1) - inter;
-  return u > 0 ? inter / u : 0;
-}
-
-function bbox(pts) {
-  const xs = pts.map(p=>p.x), ys = pts.map(p=>p.y);
-  return {x1:Math.min(...xs),y1:Math.min(...ys),x2:Math.max(...xs),y2:Math.max(...ys)};
-}
-
-function reduceToFour(pts) {
-  const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);
-  const mn=Math.min,mx=Math.max;
-  const d=(p,cx,cy)=>Math.hypot(p.x-cx,p.y-cy);
-  const cl=(cx,cy)=>pts.reduce((b,p)=>d(p,cx,cy)<d(b,cx,cy)?p:b,pts[0]);
-  return [cl(mn(...xs),mn(...ys)),cl(mx(...xs),mn(...ys)),cl(mx(...xs),mx(...ys)),cl(mn(...xs),mx(...ys))];
-}
-
-function orderCorners(pts) {
-  const s = [...pts].sort((a,b)=>a.y-b.y);
-  const top = s.slice(0,2).sort((a,b)=>a.x-b.x);
-  const bot = s.slice(2).sort((a,b)=>a.x-b.x);
-  return [top[0],top[1],bot[1],bot[0]];
-}
-
-function dewarp(src, corners, imgW, imgH) {
-  const [tl,tr,br,bl] = corners;
-  const maxW = Math.round(Math.max(Math.hypot(tr.x-tl.x,tr.y-tl.y),Math.hypot(br.x-bl.x,br.y-bl.y)));
-  const maxH = Math.round(Math.max(Math.hypot(bl.x-tl.x,bl.y-tl.y),Math.hypot(br.x-tr.x,br.y-tr.y)));
-  if (maxW < 10 || maxH < 10) {
-    const c = document.createElement('canvas'); c.width=imgW; c.height=imgH; cv.imshow(c,src); return c;
-  }
-  const sp = cv.matFromArray(4,1,cv.CV_32FC2,[tl.x,tl.y,tr.x,tr.y,br.x,br.y,bl.x,bl.y]);
-  const dp = cv.matFromArray(4,1,cv.CV_32FC2,[0,0,maxW-1,0,maxW-1,maxH-1,0,maxH-1]);
-  const M = cv.getPerspectiveTransform(sp,dp);
-  const dst = new cv.Mat();
-  cv.warpPerspective(src,dst,M,new cv.Size(maxW,maxH));
-  const c = document.createElement('canvas'); c.width=maxW; c.height=maxH; cv.imshow(c,dst);
-  sp.delete(); dp.delete(); M.delete(); dst.delete();
-  return c;
-}
-
-async function redewarpCard(card, dataUrl) {
-  if (!window.cv || !cv.Mat) return;
-  const img = await loadImg(dataUrl);
-  const srcMat = cv.imread(img);
-  card.corners = orderCorners(card.corners);
-  const newCanvas = dewarp(srcMat, card.corners, srcMat.cols, srcMat.rows);
-  card.cropCanvas = newCanvas;
-  card.baseCanvas = newCanvas;
-  card.rotation90 = 0; card.rotationFine = 0; card.cropRect = null;
-  srcMat.delete();
-}
-
-// ── Image adjustment helpers ──────────────────────────────────────────────────
-function rotateCanvas(canvas, degrees) {
-  const rad = degrees * Math.PI / 180;
-  const w = canvas.width, h = canvas.height;
-  const sin = Math.abs(Math.sin(rad)), cos = Math.abs(Math.cos(rad));
-  const nw = Math.ceil(w * cos + h * sin);
-  const nh = Math.ceil(w * sin + h * cos);
-  const out = document.createElement('canvas');
-  out.width = nw; out.height = nh;
-  const ctx = out.getContext('2d');
-  ctx.translate(nw / 2, nh / 2);
-  ctx.rotate(rad);
-  ctx.drawImage(canvas, -w / 2, -h / 2);
+  } catch(e) { grayMat.copyTo(out); } // fallback to original on error
   return out;
 }
 
-function applyAdjustments(card) {
-  if (!card.baseCanvas) return;
-  let result = card.baseCanvas;
-  const totalRot = (card.rotation90 || 0) + (card.rotationFine || 0);
-  if (Math.abs(totalRot) > 0.05) result = rotateCanvas(card.baseCanvas, totalRot);
-  if (card.cropRect) {
-    const {x, y, w, h} = card.cropRect;
-    const c = document.createElement('canvas');
-    c.width = Math.max(1, Math.round(w));
-    c.height = Math.max(1, Math.round(h));
-    c.getContext('2d').drawImage(result, x, y, w, h, 0, 0, c.width, c.height);
-    result = c;
-  }
-  card.cropCanvas = result;
-}
+// ── Per-variant detection: returns [{corners[{x,y}x4], conf, area}] ───────────
+function detectRectanglesFromMat(variantMat, imgW, imgH) {
+  const blurred = new cv.Mat();
+  const edges   = new cv.Mat();
+  const dilated = new cv.Mat();
+  const contours  = new cv.MatVector();
+  const hierarchy = new cv.Mat();
+  const kernel  = cv.Mat.ones(3, 3, cv.CV_8U);
+  const results = [];
 
-// ── Upload screen ─────────────────────────────────────────────────────────────
-function initUpload() {
-  const zone = $('uploadZone');
-  const input = $('fileInput');
-  const grid = $('photoGrid');
-  const act = $('uploadAct');
-  const btn = $('processBtn');
+  try {
+    cv.GaussianBlur(variantMat, blurred, new cv.Size(5, 5), 0);
+    cv.Canny(blurred, edges, 75, 200);
+    cv.dilate(edges, dilated, kernel);
+    cv.findContours(dilated, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-  zone.addEventListener('click', () => input.click());
-  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
-  zone.addEventListener('dragleave', () => zone.classList.remove('over'));
-  zone.addEventListener('drop', e => {
-    e.preventDefault(); zone.classList.remove('over');
-    addFiles([...e.dataTransfer.files].filter(f => f.type.startsWith('image/')));
-  });
-  input.addEventListener('change', () => { addFiles([...input.files]); input.value = ''; });
+    const imgArea = imgW * imgH;
+    for (let i = 0; i < contours.size(); i++) {
+      const cnt = contours.get(i);
+      const area = cv.contourArea(cnt);
+      if (area < imgArea * 0.025 || area > imgArea * 0.92) { cnt.delete(); continue; }
 
-  async function addFiles(files) {
-    for (const f of files) {
-      const dataUrl = await new Promise(res => {
-        const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(f);
-      });
-      S.photos.push({dataUrl});
-    }
-    renderGrid();
-  }
+      const peri = cv.arcLength(cnt, true);
+      const approx = new cv.Mat();
+      cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
 
-  function renderGrid() {
-    grid.innerHTML = '';
-    S.photos.forEach((p, i) => {
-      const wrap = document.createElement('div');
-      wrap.className = 'photo-thumb';
-      const img = document.createElement('img');
-      img.src = p.dataUrl;
-      const rm = document.createElement('button');
-      rm.className = 'rm'; rm.textContent = '×';
-      rm.onclick = e => { e.stopPropagation(); S.photos.splice(i,1); renderGrid(); };
-      wrap.appendChild(img); wrap.appendChild(rm);
-      grid.appendChild(wrap);
-    });
-    const n = S.photos.length;
-    act.style.display = n ? 'flex' : 'none';
-    btn.textContent = `Process ${n} Photo${n===1?'':'s'} →`;
-  }
-
-  btn.addEventListener('click', () => {
-    if (!S.photos.length) return;
-    S.photoCards = S.photos.map(() => null);
-    S.allCards = [];
-    S.currentPhotoIdx = 0;
-    S.currentCardIdx = 0;
-    showScreen('screen-detect');
-    setCrumb('Detect Cards');
-    initDetect();
-  });
-}
-
-// ── Detection screen ──────────────────────────────────────────────────────────
-function initDetect() {
-  const detImg      = $('detImg');
-  const overlayCvs  = $('overlayCvs');
-  const detLoading  = $('detLoading');
-  const detCard     = $('detCardState');
-  const detEmpty    = $('detEmpty');
-  const prevPhotoBtn = $('prevPhotoBtn');
-  const nextPhotoBtn = $('nextPhotoBtn');
-  const photoLbl    = $('photoLbl');
-  const prevCardBtn = $('prevCardBtn');
-  const nextCardBtn = $('nextCardBtn');
-  const cardLbl     = $('cardLbl');
-  const detCrop     = $('detCrop');
-  const detBadge    = $('detBadge');
-  const skipCardBtn = $('skipCardBtn');
-  const includeCardBtn = $('includeCardBtn');
-  const confirmCardsBtn = $('confirmCardsBtn');
-  const addManualBtn = $('addManualBtn');
-  const rotSlider   = $('rotSlider');
-  const adjAngle    = $('adjAngle');
-  const cropModeBtn = $('cropModeBtn');
-  const resetAdjBtn = $('resetAdjBtn');
-  const useCJKChk   = $('useCJKChk');
-  if (useCJKChk) {
-    useCJKChk.checked = !!S.useCJK;
-    useCJKChk.addEventListener('change', () => { S.useCJK = useCJKChk.checked; });
-  }
-
-  let drag = null;   // {cornerIdx, card}
-  let manualMode = false;
-  let manualStart = null;
-  let cropActive = false;
-  let cropStart = null;
-  let cropDispCanvas = null;
-
-  // Sync overlay canvas to sit exactly on the rendered image
-  function syncCanvas() {
-    if (!detImg.naturalWidth) return;
-    const iRect = detImg.getBoundingClientRect();
-    const pRect = $('detPhotoCol').getBoundingClientRect();
-    overlayCvs.width  = detImg.naturalWidth;
-    overlayCvs.height = detImg.naturalHeight;
-    overlayCvs.style.left   = (iRect.left - pRect.left) + 'px';
-    overlayCvs.style.top    = (iRect.top  - pRect.top)  + 'px';
-    overlayCvs.style.width  = iRect.width  + 'px';
-    overlayCvs.style.height = iRect.height + 'px';
-  }
-  window.addEventListener('resize', syncCanvas);
-
-  function canvasPt(e) {
-    const r = overlayCvs.getBoundingClientRect();
-    const sx = overlayCvs.width / r.width;
-    const sy = overlayCvs.height / r.height;
-    const src = e.touches ? e.touches[0] : (e.changedTouches ? e.changedTouches[0] : e);
-    return {x: (src.clientX - r.left) * sx, y: (src.clientY - r.top) * sy};
-  }
-
-  async function loadPhoto(idx) {
-    S.currentPhotoIdx = idx;
-    photoLbl.textContent = `Photo ${idx+1} of ${S.photos.length}`;
-    prevPhotoBtn.disabled = idx === 0;
-    nextPhotoBtn.disabled = idx === S.photos.length - 1;
-    detImg.src = S.photos[idx].dataUrl;
-    await new Promise(res => {
-      if (detImg.complete && detImg.naturalWidth) { res(); return; }
-      detImg.onload = res;
-    });
-    syncCanvas();
-  }
-
-  function rebuildFlat() {
-    S.allCards = [];
-    S.photos.forEach((_, pi) => {
-      const cards = S.photoCards[pi];
-      if (cards) cards.forEach(card => S.allCards.push({photoIdx: pi, card}));
-    });
-    updateConfirmBtn();
-  }
-
-  function updateConfirmBtn() {
-    const n = S.allCards.filter(a => a.card.accepted).length;
-    confirmCardsBtn.textContent = `Confirm ${n} card${n===1?'':'s'} →`;
-    confirmCardsBtn.disabled = n === 0;
-  }
-
-  function renderOverlay() {
-    const ctx = overlayCvs.getContext('2d');
-    ctx.clearRect(0, 0, overlayCvs.width, overlayCvs.height);
-    const cards = S.photoCards[S.currentPhotoIdx] || [];
-    const activeCard = S.allCards[S.currentCardIdx]?.card;
-
-    cards.forEach((card, i) => {
-      const isActive = card === activeCard;
-      const pts = card.corners;
-      if (!pts || pts.length < 4) return;
-
-      ctx.beginPath();
-      ctx.moveTo(pts[0].x, pts[0].y);
-      for (let j = 1; j < pts.length; j++) ctx.lineTo(pts[j].x, pts[j].y);
-      ctx.closePath();
-
-      const col = card.accepted ? '#2ecc71' : '#e74c3c';
-      ctx.strokeStyle = isActive ? col : col + '99';
-      ctx.fillStyle   = isActive ? col + '28' : col + '12';
-      ctx.lineWidth   = isActive ? 3 : 1.5;
-      ctx.stroke(); ctx.fill();
-
-      // Number badge
-      const cx = pts.reduce((s,p)=>s+p.x,0)/4;
-      const cy = pts.reduce((s,p)=>s+p.y,0)/4;
-      const r  = isActive ? 18 : 13;
-      ctx.fillStyle = isActive ? col : col + '99';
-      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#fff';
-      ctx.font = `bold ${isActive?13:10}px sans-serif`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(i+1, cx, cy);
-
-      // Corner handles for active card
-      if (isActive) {
-        pts.forEach(p => {
-          ctx.beginPath(); ctx.arc(p.x, p.y, 10, 0, Math.PI*2);
-          ctx.fillStyle = col; ctx.fill();
-          ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
-        });
+      if (approx.rows === 4) {
+        const corners = [];
+        for (let j = 0; j < 4; j++) corners.push({ x: approx.data32S[j*2], y: approx.data32S[j*2+1] });
+        const rx1 = Math.min(...corners.map(c=>c.x)), ry1 = Math.min(...corners.map(c=>c.y));
+        const rx2 = Math.max(...corners.map(c=>c.x)), ry2 = Math.max(...corners.map(c=>c.y));
+        const bw = rx2-rx1, bh = ry2-ry1;
+        const aspect = bw / (bh || 1);
+        if (aspect >= 0.3 && aspect <= 3.5) {
+          const conf = computeConf(corners, area, imgArea, aspect);
+          results.push({ corners, conf, area });
+        }
       }
+      approx.delete(); cnt.delete();
+    }
+  } finally {
+    blurred.delete(); edges.delete(); dilated.delete();
+    contours.delete(); hierarchy.delete(); kernel.delete();
+  }
+  return results;
+}
+
+function computeConf(corners, area, imgArea, aspect) {
+  // Aspect ratio prior — business cards cluster around 1.55-1.75
+  const asMean = 1.65, asSig = 0.4;
+  const aspectScore = Math.exp(-Math.pow(aspect - asMean, 2) / (2 * asSig * asSig));
+  // Area ratio — typical card is 5–45% of photo
+  const areaRatio = area / imgArea;
+  const areaScore = areaRatio > 0.04 && areaRatio < 0.55 ? 1.0 : 0.5;
+  // Angle regularity — corners should be ~90°
+  let totalDev = 0;
+  for (let i = 0; i < 4; i++) {
+    const a = corners[(i+3)%4], b = corners[i], c = corners[(i+1)%4];
+    const v1 = {x: a.x-b.x, y: a.y-b.y}, v2 = {x: c.x-b.x, y: c.y-b.y};
+    const dot = v1.x*v2.x + v1.y*v2.y;
+    const mag = Math.sqrt((v1.x*v1.x+v1.y*v1.y)*(v2.x*v2.x+v2.y*v2.y)) + 1e-6;
+    const ang = Math.acos(Math.max(-1, Math.min(1, dot/mag))) * 180 / Math.PI;
+    totalDev += Math.abs(ang - 90);
+  }
+  const angleScore = Math.max(0, 1 - (totalDev/4)/90);
+  return 0.35*aspectScore + 0.25*areaScore + 0.40*angleScore;
+}
+
+// ── Weighted Box Fusion ────────────────────────────────────────────────────────
+function cornersIoU(ca, cb) {
+  const ax1=Math.min(...ca.map(p=>p.x)), ay1=Math.min(...ca.map(p=>p.y));
+  const ax2=Math.max(...ca.map(p=>p.x)), ay2=Math.max(...ca.map(p=>p.y));
+  const bx1=Math.min(...cb.map(p=>p.x)), by1=Math.min(...cb.map(p=>p.y));
+  const bx2=Math.max(...cb.map(p=>p.x)), by2=Math.max(...cb.map(p=>p.y));
+  const ix = Math.max(0, Math.min(ax2,bx2) - Math.max(ax1,bx1));
+  const iy = Math.max(0, Math.min(ay2,by2) - Math.max(ay1,by1));
+  const inter = ix * iy;
+  const union = (ax2-ax1)*(ay2-ay1) + (bx2-bx1)*(by2-by1) - inter;
+  return union > 0 ? inter / union : 0;
+}
+
+function wbfMerge(allBoxes, nVariants) {
+  if (!allBoxes.length) return [];
+  allBoxes.sort((a,b) => b.conf - a.conf);
+  const clusters = [];
+  for (const box of allBoxes) {
+    let matched = false;
+    for (const cl of clusters) {
+      if (cornersIoU(box.corners, cl.avg.corners) > 0.5) {
+        cl.members.push(box); cl.avg = wbfAvgCorners(cl.members); matched = true; break;
+      }
+    }
+    if (!matched) clusters.push({ members: [box], avg: box });
+  }
+  return clusters
+    .map(cl => {
+      const score = cl.members.reduce((s,b)=>s+b.conf,0) / nVariants;
+      return { corners: cl.avg.corners, conf: score, clusterSize: cl.members.length };
+    })
+    .filter(c => c.conf > 0.25)
+    .sort((a,b) => b.conf - a.conf);
+}
+
+function wbfAvgCorners(members) {
+  const total = members.reduce((s,b)=>s+b.conf,0) || 1;
+  const corners = [0,1,2,3].map(i => ({
+    x: members.reduce((s,b)=>s+b.corners[i].x*b.conf,0)/total,
+    y: members.reduce((s,b)=>s+b.corners[i].y*b.conf,0)/total,
+  }));
+  return { corners };
+}
+
+// ── Main detection entry point ─────────────────────────────────────────────────
+const VARIANTS = ['original','gamma_brt','gamma_drk','clahe','histeq','bilateral','unsharp'];
+
+async function detectCardsInPhoto(photoId) {
+  const photo = photoById(photoId);
+  if (!photo) return;
+
+  // Remove previous auto-detected cards for this photo (keep manual)
+  S.cards = S.cards.filter(c => c.photoId !== photoId || c.manual);
+
+  setDetStatus('<span class="spinner"></span> Detecting cards… (7 variants)', false);
+  renderCardList();
+
+  try {
+    await ensureCV();
+  } catch(e) {
+    setDetStatus('⚠ OpenCV failed to load — draw cards manually', false);
+    return;
+  }
+
+  // Load photo onto a canvas
+  const img = new Image();
+  await new Promise(res => { img.onload = res; img.src = photo.dataUrl; });
+  const srcCanvas = document.createElement('canvas');
+  srcCanvas.width = img.naturalWidth; srcCanvas.height = img.naturalHeight;
+  srcCanvas.getContext('2d').drawImage(img, 0, 0);
+
+  const srcMat = cv.imread(srcCanvas);
+  const grayMat = new cv.Mat();
+  cv.cvtColor(srcMat, grayMat, cv.COLOR_RGBA2GRAY);
+  srcMat.delete();
+
+  let allBoxes = [];
+  for (const variant of VARIANTS) {
+    const vMat = applyVariant(grayMat, variant);
+    try {
+      const boxes = detectRectanglesFromMat(vMat, img.naturalWidth, img.naturalHeight);
+      allBoxes.push(...boxes);
+    } catch(e) { /* skip failed variant */ }
+    vMat.delete();
+  }
+  grayMat.delete();
+
+  const merged = wbfMerge(allBoxes, VARIANTS.length);
+
+  // Sort merged results left-to-right, top-to-bottom
+  merged.sort((a,b) => {
+    const ay = Math.min(...a.corners.map(p=>p.y)), by = Math.min(...b.corners.map(p=>p.y));
+    const ax = Math.min(...a.corners.map(p=>p.x)), bx = Math.min(...b.corners.map(p=>p.x));
+    return (ay - by) || (ax - bx);
+  });
+
+  for (const box of merged) {
+    S.cardCounter++;
+    S.cards.push({
+      id: uuid(), photoId, num: S.cardCounter,
+      corners: box.corners, accepted: true, manual: false,
+      ocrStatus: 'idle', rot90: 0, rotFine: 0, cropCanvas: null,
     });
   }
 
-  function showPanel() {
-    const cards = S.photoCards[S.currentPhotoIdx];
-    if (!cards) {
-      detLoading.style.display = 'flex'; detCard.style.display = 'none'; detEmpty.style.display = 'none'; return;
-    }
-    detLoading.style.display = 'none';
-    if (S.allCards.length === 0) {
-      detCard.style.display = 'none'; detEmpty.style.display = 'block'; return;
-    }
-
-    // Clamp to valid index
-    const photosCards = S.allCards.filter(a => a.photoIdx === S.currentPhotoIdx);
-    if (photosCards.length > 0) {
-      const firstIdx = S.allCards.indexOf(photosCards[0]);
-      const lastIdx  = S.allCards.indexOf(photosCards[photosCards.length-1]);
-      S.currentCardIdx = Math.max(firstIdx, Math.min(S.currentCardIdx, lastIdx));
-    }
-
-    detCard.style.display = 'flex'; detEmpty.style.display = 'none';
-
-    const item = S.allCards[S.currentCardIdx];
-    if (!item) return;
-
-    cardLbl.textContent = `Card ${S.currentCardIdx+1} of ${S.allCards.length}`;
-    prevCardBtn.disabled = S.currentCardIdx === 0;
-    nextCardBtn.disabled = S.currentCardIdx === S.allCards.length - 1;
-
-    const card = item.card;
-
-    // Crop preview + sync adjustment controls
-    refreshCropPreview();
-    rotSlider.value = card.rotationFine || 0;
-    updateAngleDisplay(card);
-
-    // Confidence badge
-    if (card.isFallback) {
-      detBadge.textContent = 'No card detected — showing full photo';
-      detBadge.style.color = 'var(--warn)';
-    } else if (card.isManual) {
-      detBadge.textContent = '✎ Manually drawn';
-      detBadge.style.color = 'var(--muted)';
-    } else {
-      const c = card.confidence || 1;
-      if (c >= 3)    { detBadge.textContent = '●●● High confidence';   detBadge.style.color = 'var(--ok)'; }
-      else if (c===2){ detBadge.textContent = '●●○ Medium — verify';   detBadge.style.color = 'var(--muted)'; }
-      else           { detBadge.textContent = '●○○ Low — verify';      detBadge.style.color = 'var(--warn)'; }
-    }
-
-    if (card.accepted) {
-      includeCardBtn.textContent = '✓ Included'; includeCardBtn.classList.add('btn-primary'); includeCardBtn.classList.remove('btn-outline');
-      skipCardBtn.textContent    = 'Skip';        skipCardBtn.classList.remove('btn-primary'); skipCardBtn.classList.add('btn-outline');
-    } else {
-      includeCardBtn.textContent = '+ Include'; includeCardBtn.classList.remove('btn-primary'); includeCardBtn.classList.add('btn-outline');
-      skipCardBtn.textContent    = '✗ Skipped';  skipCardBtn.classList.add('btn-primary'); skipCardBtn.classList.remove('btn-outline');
-    }
-
-    renderOverlay();
+  if (merged.length === 0) {
+    setDetStatus('No cards detected — draw one manually', false);
+  } else {
+    setDetStatus(`✓ Found ${merged.length} card${merged.length>1?'s':''}`, false);
   }
 
-  // ── Corner handle drag ────────────────────────────────────────────────────
-  overlayCvs.addEventListener('mousemove', e => {
-    if (manualMode) return;
-    const pt = canvasPt(e);
-    if (drag) {
-      drag.card.corners[drag.cornerIdx] = pt;
-      renderOverlay();
+  renderCardList();
+  renderOverlay();
+  renderContactsPanel();
+  updateOCRButtons();
+}
+
+// ── Dewarp / crop a card ───────────────────────────────────────────────────────
+function buildCropCanvas(card, photo) {
+  if (!cvReady) return null;
+  const img = photo._img;  // already-loaded element stored at upload time
+  if (!img || !img.complete) return null;
+  const srcCanvas = document.createElement('canvas');
+  srcCanvas.width = photo.naturalW; srcCanvas.height = photo.naturalH;
+  srcCanvas.getContext('2d').drawImage(img, 0, 0);
+
+  const srcPts = card.corners;
+  const xs = srcPts.map(p=>p.x), ys = srcPts.map(p=>p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const W = Math.round(maxX - minX);
+  const H = Math.round(maxY - minY);
+  if (W < 10 || H < 10) return null;
+
+  try {
+    const src = cv.imread(srcCanvas);
+    const ordered = orderCorners(srcPts);
+    const dstPts  = [{ x:0,y:0 },{ x:W,y:0 },{ x:W,y:H },{ x:0,y:H }];
+    const srcMat  = cv.matFromArray(4,1,cv.CV_32FC2, ordered.flatMap(p=>[p.x,p.y]));
+    const dstMat  = cv.matFromArray(4,1,cv.CV_32FC2, dstPts.flatMap(p=>[p.x,p.y]));
+    const M       = cv.getPerspectiveTransform(srcMat, dstMat);
+    const dst     = new cv.Mat();
+    cv.warpPerspective(src, dst, M, new cv.Size(W, H));
+    const out = document.createElement('canvas');
+    out.width = W; out.height = H;
+    cv.imshow(out, dst);
+    src.delete(); srcMat.delete(); dstMat.delete(); M.delete(); dst.delete();
+
+    // Apply rotation
+    let result = out;
+    const totalRot = (card.rot90 || 0) + (card.rotFine || 0);
+    if (Math.abs(totalRot) > 0.05) result = rotateCanvas(result, totalRot);
+    return result;
+  } catch(e) {
+    // Fallback: simple bounding rect crop
+    const out = document.createElement('canvas');
+    out.width = W; out.height = H;
+    out.getContext('2d').drawImage(srcCanvas, minX, minY, W, H, 0, 0, W, H);
+    return out;
+  }
+}
+
+function orderCorners(pts) {
+  const cx = pts.reduce((s,p)=>s+p.x,0)/4;
+  const cy = pts.reduce((s,p)=>s+p.y,0)/4;
+  const tl = pts.find(p=>p.x<=cx&&p.y<=cy) || pts[0];
+  const tr = pts.find(p=>p.x> cx&&p.y<=cy) || pts[1];
+  const br = pts.find(p=>p.x> cx&&p.y> cy) || pts[2];
+  const bl = pts.find(p=>p.x<=cx&&p.y> cy) || pts[3];
+  return [tl, tr, br, bl];
+}
+
+function rotateCanvas(canvas, deg) {
+  const rad = deg * Math.PI / 180;
+  const w = canvas.width, h = canvas.height;
+  const sin = Math.abs(Math.sin(rad)), cos = Math.abs(Math.cos(rad));
+  const nw = Math.ceil(w*cos + h*sin), nh = Math.ceil(w*sin + h*cos);
+  const out = document.createElement('canvas');
+  out.width = nw; out.height = nh;
+  const ctx = out.getContext('2d');
+  ctx.translate(nw/2, nh/2); ctx.rotate(rad);
+  ctx.drawImage(canvas, -w/2, -h/2);
+  return out;
+}
+
+// ── Canvas overlay ─────────────────────────────────────────────────────────────
+function renderOverlay() {
+  const canvas = $('overlay-canvas');
+  const photo = photoById(S.activePhotoId);
+  if (!canvas || !photo) return;
+
+  const img = $('active-photo');
+  if (!img.offsetWidth) return;
+  canvas.width  = img.offsetWidth;
+  canvas.height = img.offsetHeight;
+  const scale = getPhotoScale();
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const cards = cardsForPhoto(S.activePhotoId);
+  for (const card of cards) {
+    drawCardBox(ctx, card, scale);
+  }
+
+  // In-progress manual draw
+  if (S.drawMode && S.drawStart && S.drawCurrent) {
+    ctx.strokeStyle = '#3b82f6';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6,3]);
+    const x = Math.min(S.drawStart.cx, S.drawCurrent.cx);
+    const y = Math.min(S.drawStart.cy, S.drawCurrent.cy);
+    const w = Math.abs(S.drawCurrent.cx - S.drawStart.cx);
+    const h = Math.abs(S.drawCurrent.cy - S.drawStart.cy);
+    ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
+  }
+}
+
+function drawCardBox(ctx, card, scale) {
+  const corners = card.corners.map(p => ({ x: p.x*scale, y: p.y*scale }));
+  const isActive = card.id === S.activeCardId;
+  const color = card.accepted ? (isActive ? '#16a34a' : '#22c55e') : '#ef4444';
+  const lineW = isActive ? 3 : 2;
+
+  ctx.beginPath();
+  ctx.moveTo(corners[0].x, corners[0].y);
+  for (let i = 1; i < corners.length; i++) ctx.lineTo(corners[i].x, corners[i].y);
+  ctx.closePath();
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineW;
+  ctx.stroke();
+  ctx.fillStyle = card.accepted ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)';
+  ctx.fill();
+
+  // Badge number
+  const cx = corners.reduce((s,p)=>s+p.x,0)/4;
+  const cy = corners.reduce((s,p)=>s+p.y,0)/4;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 12, 0, Math.PI*2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 11px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`C${card.num}`, cx, cy);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+
+  // Corner handles when active
+  if (isActive) {
+    for (const c of corners) {
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 6, 0, Math.PI*2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+}
+
+// ── Canvas mouse: select, drag handles, draw mode ──────────────────────────────
+let dragCornerIdx = null;
+let dragCard = null;
+
+function setupOverlayEvents() {
+  const canvas = $('overlay-canvas');
+
+  canvas.addEventListener('mousedown', e => {
+    if (S.drawMode) {
+      const p = canvasEvtPos(e);
+      S.drawStart = p; S.drawCurrent = p;
       return;
     }
-    // Hover cursor
-    const activeCard = S.allCards[S.currentCardIdx]?.card;
-    if (activeCard) {
-      const near = activeCard.corners.some(c => Math.hypot(pt.x-c.x, pt.y-c.y) < 14);
-      overlayCvs.style.cursor = near ? 'grab' : 'default';
-    }
-  });
-
-  overlayCvs.addEventListener('mousedown', e => {
-    if (manualMode) return;
-    const pt = canvasPt(e);
-    const activeCard = S.allCards[S.currentCardIdx]?.card;
-
-    // Try to grab a corner handle
-    if (activeCard) {
-      for (let i = 0; i < activeCard.corners.length; i++) {
-        const c = activeCard.corners[i];
-        if (Math.hypot(pt.x-c.x, pt.y-c.y) < 16) {
-          drag = {cornerIdx: i, card: activeCard};
-          overlayCvs.style.cursor = 'grabbing';
-          return;
+    // Check corner handles of active card
+    if (S.activeCardId) {
+      const scale = getPhotoScale();
+      const card = cardById(S.activeCardId);
+      if (card) {
+        for (let i = 0; i < card.corners.length; i++) {
+          const c = card.corners[i];
+          const cx = c.x * scale, cy = c.y * scale;
+          const p = canvasEvtPos(e);
+          if (Math.hypot(p.cx-cx, p.cy-cy) < 14) {
+            dragCornerIdx = i; dragCard = card; return;
+          }
         }
       }
     }
-
-    // Click on a different card badge to select it
-    const cards = S.photoCards[S.currentPhotoIdx] || [];
-    for (let i = 0; i < cards.length; i++) {
-      const card = cards[i];
-      const cx = card.corners.reduce((s,p)=>s+p.x,0)/4;
-      const cy = card.corners.reduce((s,p)=>s+p.y,0)/4;
-      if (Math.hypot(pt.x-cx, pt.y-cy) < 22) {
-        const idx = S.allCards.findIndex(a => a.card === card);
-        if (idx >= 0) { S.currentCardIdx = idx; showPanel(); }
-        return;
-      }
-    }
-  });
-
-  overlayCvs.addEventListener('mouseup', async () => {
-    if (!drag) return;
-    overlayCvs.style.cursor = 'default';
-    const card = drag.card;
-    drag = null;
-    await redewarpCard(card, S.photos[S.currentPhotoIdx].dataUrl);
-    showPanel();
-  });
-
-  overlayCvs.addEventListener('mouseleave', () => {
-    if (drag) { drag = null; overlayCvs.style.cursor = 'default'; }
-  });
-
-  // ── Manual crop tool ───────────────────────────────────────────────────────
-  addManualBtn.addEventListener('click', () => {
-    if (manualMode) return;
-    manualMode = true;
-    addManualBtn.textContent = '(drawing — drag to crop)';
-    overlayCvs.style.cursor = 'crosshair';
-    overlayCvs.style.pointerEvents = 'auto';
-  });
-
-  overlayCvs.addEventListener('mousedown', e => {
-    if (!manualMode) return;
-    manualStart = canvasPt(e);
-  });
-
-  overlayCvs.addEventListener('mousemove', e => {
-    if (!manualMode || !manualStart) return;
-    const pt = canvasPt(e);
-    renderOverlay();
-    const ctx = overlayCvs.getContext('2d');
-    ctx.strokeStyle = '#f39c12'; ctx.lineWidth = 2;
-    ctx.setLineDash([8,4]);
-    ctx.strokeRect(manualStart.x, manualStart.y, pt.x-manualStart.x, pt.y-manualStart.y);
-    ctx.setLineDash([]);
-  });
-
-  overlayCvs.addEventListener('mouseup', async e => {
-    if (!manualMode || !manualStart) return;
-    const pt = canvasPt(e);
-    const x1 = Math.min(manualStart.x, pt.x), y1 = Math.min(manualStart.y, pt.y);
-    const x2 = Math.max(manualStart.x, pt.x), y2 = Math.max(manualStart.y, pt.y);
-    manualStart = null;
-    manualMode = false;
-    addManualBtn.textContent = '+ Add card manually';
-    overlayCvs.style.cursor = 'default';
-    overlayCvs.style.pointerEvents = 'none';
-
-    if ((x2-x1) < 20 || (y2-y1) < 10) return;
-
-    const corners = [{x:x1,y:y1},{x:x2,y:y1},{x:x2,y:y2},{x:x1,y:y2}];
-    const cropC = document.createElement('canvas');
-    cropC.width = x2-x1; cropC.height = y2-y1;
-    const tmp = await loadImg(S.photos[S.currentPhotoIdx].dataUrl);
-    cropC.getContext('2d').drawImage(tmp, x1, y1, x2-x1, y2-y1, 0, 0, x2-x1, y2-y1);
-
-    if (!S.photoCards[S.currentPhotoIdx]) S.photoCards[S.currentPhotoIdx] = [];
-    S.photoCards[S.currentPhotoIdx].push({corners, cropCanvas: cropC, baseCanvas: cropC, accepted: true, area: (x2-x1)*(y2-y1), isManual: true});
-    rebuildFlat();
-    S.currentCardIdx = S.allCards.length - 1;
-    showPanel();
-  });
-
-  // ── Photo nav ──────────────────────────────────────────────────────────────
-  prevPhotoBtn.addEventListener('click', async () => {
-    if (S.currentPhotoIdx <= 0) return;
-    await loadPhoto(S.currentPhotoIdx - 1);
-    jumpToPhotoCards(S.currentPhotoIdx);
-  });
-  nextPhotoBtn.addEventListener('click', async () => {
-    if (S.currentPhotoIdx >= S.photos.length - 1) return;
-    await loadPhoto(S.currentPhotoIdx + 1);
-    jumpToPhotoCards(S.currentPhotoIdx);
-  });
-
-  function jumpToPhotoCards(pIdx) {
-    const idx = S.allCards.findIndex(a => a.photoIdx === pIdx);
-    S.currentCardIdx = idx >= 0 ? idx : S.currentCardIdx;
-    showPanel();
-  }
-
-  // ── Card nav ───────────────────────────────────────────────────────────────
-  prevCardBtn.addEventListener('click', () => {
-    if (S.currentCardIdx > 0) { S.currentCardIdx--; maybeLoadPhotoForCard(); showPanel(); }
-  });
-  nextCardBtn.addEventListener('click', () => {
-    if (S.currentCardIdx < S.allCards.length - 1) { S.currentCardIdx++; maybeLoadPhotoForCard(); showPanel(); }
-  });
-
-  async function maybeLoadPhotoForCard() {
-    const item = S.allCards[S.currentCardIdx];
-    if (item && item.photoIdx !== S.currentPhotoIdx) await loadPhoto(item.photoIdx);
-  }
-
-  // ── Include / Skip ─────────────────────────────────────────────────────────
-  includeCardBtn.addEventListener('click', () => {
-    const item = S.allCards[S.currentCardIdx]; if (!item) return;
-    item.card.accepted = true; showPanel();
-  });
-  skipCardBtn.addEventListener('click', () => {
-    const item = S.allCards[S.currentCardIdx]; if (!item) return;
-    item.card.accepted = false; showPanel();
-  });
-
-  // ── Adjustment helpers ────────────────────────────────────────────────────
-  function getActiveCard() { return S.allCards[S.currentCardIdx]?.card; }
-
-  function refreshCropPreview() {
-    detCrop.innerHTML = '';
-    cropActive = false; cropStart = null;
-    cropModeBtn.textContent = '✂ Crop';
-    const card = getActiveCard();
-    if (!card?.cropCanvas) return null;
-    const c = document.createElement('canvas');
-    c.width = card.cropCanvas.width;
-    c.height = card.cropCanvas.height;
-    c.getContext('2d').drawImage(card.cropCanvas, 0, 0);
-    detCrop.appendChild(c);
-    cropDispCanvas = c;
-    return c;
-  }
-
-  function updateAngleDisplay(card) {
-    if (!card) { adjAngle.textContent = 'Fine: 0°  ·  Total: 0°'; return; }
-    const fine = card.rotationFine || 0;
-    const r90  = card.rotation90  || 0;
-    adjAngle.textContent = `Fine: ${fine.toFixed(1)}°  ·  Total: ${(r90 + fine).toFixed(1)}°`;
-  }
-
-  function doRotate(deg) {
-    const card = getActiveCard(); if (!card) return;
-    if (Math.abs(deg) >= 45) {
-      card.rotation90 = (card.rotation90 || 0) + deg;
+    // Click on a card box
+    const clicked = hitTestCards(e);
+    if (clicked) {
+      setActiveCard(clicked.id);
     } else {
-      card.rotationFine = (card.rotationFine || 0) + deg;
-      // clamp fine to ±180
-      card.rotationFine = Math.max(-180, Math.min(180, card.rotationFine));
+      setActiveCard(null);
     }
-    card.cropRect = null;
-    rotSlider.value = Math.max(-45, Math.min(45, card.rotationFine || 0));
-    applyAdjustments(card);
-    refreshCropPreview();
-    updateAngleDisplay(card);
-  }
-
-  $('rot90ccw').addEventListener('click', () => doRotate(-90));
-  $('rot15ccw').addEventListener('click', () => doRotate(-15));
-  $('rot15cw').addEventListener('click',  () => doRotate(15));
-  $('rot90cw').addEventListener('click',  () => doRotate(90));
-
-  rotSlider.addEventListener('input', () => {
-    const card = getActiveCard(); if (!card) return;
-    card.rotationFine = parseFloat(rotSlider.value);
-    card.cropRect = null;
-    applyAdjustments(card);
-    refreshCropPreview();
-    updateAngleDisplay(card);
   });
 
-  resetAdjBtn.addEventListener('click', () => {
-    const card = getActiveCard(); if (!card) return;
-    card.rotation90 = 0; card.rotationFine = 0; card.cropRect = null;
-    rotSlider.value = 0;
-    applyAdjustments(card);
-    refreshCropPreview();
-    updateAngleDisplay(card);
-  });
-
-  // ── Crop mode ──────────────────────────────────────────────────────────────
-  cropModeBtn.addEventListener('click', () => {
-    if (cropActive) {
-      cropActive = false; cropStart = null;
-      cropModeBtn.textContent = '✂ Crop';
-      refreshCropPreview(); return;
+  canvas.addEventListener('mousemove', e => {
+    if (S.drawMode && S.drawStart) {
+      S.drawCurrent = canvasEvtPos(e);
+      renderOverlay(); return;
     }
-    cropActive = true;
-    cropModeBtn.textContent = '✕ Cancel';
-    cropDispCanvas = refreshCropPreview();
-    if (cropDispCanvas) cropDispCanvas.style.cursor = 'crosshair';
-  });
-
-  detCrop.addEventListener('mousedown', e => {
-    if (!cropActive || !cropDispCanvas) return;
-    const r = cropDispCanvas.getBoundingClientRect();
-    cropStart = {
-      x: (e.clientX - r.left) * (cropDispCanvas.width / r.width),
-      y: (e.clientY - r.top)  * (cropDispCanvas.height / r.height),
-    };
-  });
-
-  detCrop.addEventListener('mousemove', e => {
-    if (!cropActive || !cropStart || !cropDispCanvas) return;
-    const r  = cropDispCanvas.getBoundingClientRect();
-    const px = (e.clientX - r.left) * (cropDispCanvas.width / r.width);
-    const py = (e.clientY - r.top)  * (cropDispCanvas.height / r.height);
-    const card = getActiveCard();
-    const ctx  = cropDispCanvas.getContext('2d');
-    ctx.clearRect(0, 0, cropDispCanvas.width, cropDispCanvas.height);
-    if (card?.cropCanvas) ctx.drawImage(card.cropCanvas, 0, 0);
-    const x = Math.min(cropStart.x, px), y = Math.min(cropStart.y, py);
-    const w = Math.abs(px - cropStart.x),  h = Math.abs(py - cropStart.y);
-    ctx.save();
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.fillRect(0, 0, cropDispCanvas.width, cropDispCanvas.height);
-    ctx.clearRect(x, y, w, h);
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
-    ctx.setLineDash([4,3]); ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
-    ctx.restore();
-  });
-
-  detCrop.addEventListener('mouseup', e => {
-    if (!cropActive || !cropStart || !cropDispCanvas) return;
-    const r  = cropDispCanvas.getBoundingClientRect();
-    const px = (e.clientX - r.left) * (cropDispCanvas.width / r.width);
-    const py = (e.clientY - r.top)  * (cropDispCanvas.height / r.height);
-    const x  = Math.min(cropStart.x, px), y = Math.min(cropStart.y, py);
-    const w  = Math.abs(px - cropStart.x), h = Math.abs(py - cropStart.y);
-    cropStart = null; cropActive = false;
-    cropModeBtn.textContent = '✂ Crop';
-    const card = getActiveCard();
-    if (!card || w < 10 || h < 10) { refreshCropPreview(); return; }
-    card.cropRect = {x, y, w, h};
-    applyAdjustments(card);
-    refreshCropPreview();
-  });
-
-  // ── Confirm → trigger OCR ─────────────────────────────────────────────────
-  confirmCardsBtn.addEventListener('click', () => {
-    const accepted = S.allCards.filter(a => a.card.accepted).map(a => a.card);
-    if (!accepted.length) return;
-    runOCRBatch(accepted);
-  });
-
-  // ── Boot: load first photo + detect ───────────────────────────────────────
-  async function processPhoto(idx) {
-    $('detLoadMsg').textContent = `Scanning photo ${idx+1}…`;
-    try {
-      await loadOpenCV();
-      const img = await loadImg(S.photos[idx].dataUrl);
-      const cards = detectCards(img);
-      S.photoCards[idx] = cards.map(c => ({...c, accepted: !c.isFallback}));
-      const low = cards.filter(c => (c.confidence||0) < 2).length;
-      if (cards.length === 1 && cards[0].isFallback) showToast('No card edges found — draw manually');
-      else if (low) showToast(`${low} low-confidence border${low>1?'s':''} — verify`);
-    } catch(err) {
-      console.warn('Detect error:', err);
-      S.photoCards[idx] = [];
+    if (dragCornerIdx !== null && dragCard) {
+      const p = canvasEvtPos(e);
+      const scale = getPhotoScale();
+      dragCard.corners[dragCornerIdx] = { x: p.cx / scale, y: p.cy / scale };
+      dragCard.cropCanvas = null;
+      renderOverlay(); return;
     }
-    rebuildFlat();
-    if (idx === S.currentPhotoIdx) showPanel();
-  }
+    // Cursor hint
+    const hit = hitTestCards(e);
+    canvas.style.cursor = hit ? 'pointer' : (S.drawMode ? 'crosshair' : 'default');
+  });
 
-  loadPhoto(0).then(() => {
-    processPhoto(0);
-    for (let i = 1; i < S.photos.length; i++)
-      setTimeout(() => processPhoto(i), 400 * i);
+  canvas.addEventListener('mouseup', e => {
+    if (S.drawMode && S.drawStart && S.drawCurrent) {
+      finalizeManualDraw(); return;
+    }
+    if (dragCornerIdx !== null) {
+      dragCard.cropCanvas = null;
+      dragCornerIdx = null; dragCard = null;
+      renderOverlay();
+    }
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    if (dragCornerIdx !== null) {
+      dragCornerIdx = null; dragCard = null;
+    }
+    if (S.drawMode && S.drawStart) {
+      S.drawStart = null; S.drawCurrent = null; S.drawMode = false;
+      renderOverlay();
+    }
   });
 }
 
-// ── Tesseract / OCR ───────────────────────────────────────────────────────────
-let tWorkerEng = null;
-let tWorkerCJK = null;
+function canvasEvtPos(e) {
+  const canvas = $('overlay-canvas');
+  const rect = canvas.getBoundingClientRect();
+  return { cx: e.clientX - rect.left, cy: e.clientY - rect.top };
+}
+
+function hitTestCards(e) {
+  const scale = getPhotoScale();
+  const p = canvasEvtPos(e);
+  const cards = cardsForPhoto(S.activePhotoId).filter(c => c.accepted);
+  for (const card of cards) {
+    if (pointInPolygon({ x: p.cx/scale, y: p.cy/scale }, card.corners)) return card;
+  }
+  return null;
+}
+
+function pointInPolygon(pt, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length-1; i < poly.length; j = i++) {
+    const xi=poly[i].x, yi=poly[i].y, xj=poly[j].x, yj=poly[j].y;
+    const intersect = ((yi>pt.y)!==(yj>pt.y)) && (pt.x < (xj-xi)*(pt.y-yi)/(yj-yi)+xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function finalizeManualDraw() {
+  const s = S.drawStart, c = S.drawCurrent;
+  const x1 = Math.min(s.cx, c.cx) / getPhotoScale();
+  const y1 = Math.min(s.cy, c.cy) / getPhotoScale();
+  const x2 = Math.max(s.cx, c.cx) / getPhotoScale();
+  const y2 = Math.max(s.cy, c.cy) / getPhotoScale();
+  if (x2-x1 < 20 || y2-y1 < 20) { toast('Too small — draw a larger region'); }
+  else {
+    S.cardCounter++;
+    const card = {
+      id: uuid(), photoId: S.activePhotoId, num: S.cardCounter,
+      corners: [{x:x1,y:y1},{x:x2,y:y1},{x:x2,y:y2},{x:x1,y:y2}],
+      accepted: true, manual: true,
+      ocrStatus: 'idle', rot90: 0, rotFine: 0, cropCanvas: null,
+    };
+    S.cards.push(card);
+    setActiveCard(card.id);
+    renderCardList();
+    updateOCRButtons();
+    toast('Card added manually');
+  }
+  S.drawMode = false; S.drawStart = null; S.drawCurrent = null;
+  $('overlay-canvas').style.cursor = 'default';
+  renderOverlay();
+}
+
+// ── Card selection ─────────────────────────────────────────────────────────────
+function setActiveCard(cardId) {
+  S.activeCardId = cardId;
+  // Sync active contact
+  const contact = S.contacts.find(c => c.cardId === cardId);
+  S.activeContactId = contact ? contact.id : null;
+
+  renderCardList();
+  renderOverlay();
+  renderRotControls();
+  renderTokensPanel();
+  renderContactsPanel();
+  updateOCRButtons();
+}
+
+// ── Rotation controls ──────────────────────────────────────────────────────────
+function renderRotControls() {
+  const el = $('rot-controls');
+  if (!S.activeCardId) { el.classList.remove('visible'); return; }
+  el.classList.add('visible');
+  const card = cardById(S.activeCardId);
+  if (!card) return;
+  $('rot-slider').value = card.rotFine || 0;
+  updateRotAngleDisplay(card);
+}
+
+function updateRotAngleDisplay(card) {
+  const total = (card.rot90||0) + (card.rotFine||0);
+  $('rot-angle').textContent = total.toFixed(1) + '°';
+}
+
+function doRotate(card, delta90, deltaFine) {
+  card.rot90  = ((card.rot90 || 0) + delta90);
+  card.rotFine = (card.rotFine || 0) + deltaFine;
+  card.cropCanvas = null;
+  updateRotAngleDisplay(card);
+}
+
+// ── Card list render ───────────────────────────────────────────────────────────
+function renderCardList() {
+  const cards = cardsForPhoto(S.activePhotoId);
+  const listEl = $('card-list');
+  const itemsEl = $('card-items');
+  if (!cards.length) { listEl.style.display = 'none'; return; }
+  listEl.style.display = 'block';
+  itemsEl.innerHTML = '';
+
+  for (const card of cards) {
+    const div = document.createElement('div');
+    div.className = 'card-item' + (card.id === S.activeCardId ? ' active-card' : '') + (!card.accepted ? ' rejected-card' : '');
+    div.style.opacity = card.accepted ? '1' : '0.5';
+
+    const contact = contactByCardId(card.id);
+    const label = contact && contact.name ? contact.name : `Card C${card.num}`;
+    const ocrLabel = card.ocrStatus === 'running' ? '<span class="spinner" style="width:10px;height:10px;border-width:1.5px"></span>' :
+                     card.ocrStatus === 'done'    ? '<span style="color:var(--green)">✓ OCR</span>' : '';
+
+    div.innerHTML = `
+      <div class="card-badge ${card.manual ? 'manual' : (card.accepted ? '' : 'rejected')}" title="C${card.num}">C${card.num}</div>
+      <div class="card-label">${label}</div>
+      <div class="card-ocr-status">${ocrLabel}</div>
+      <div class="card-btns">
+        <button class="btn-icon accept-btn" title="Accept" data-id="${card.id}">✓</button>
+        <button class="btn-icon reject-btn" title="Reject" data-id="${card.id}" style="color:var(--red)">✗</button>
+      </div>`;
+
+    div.addEventListener('click', (e) => {
+      if (e.target.classList.contains('accept-btn') || e.target.classList.contains('reject-btn')) return;
+      setActiveCard(card.id);
+    });
+    div.querySelector('.accept-btn').addEventListener('click', () => { card.accepted = true;  renderCardList(); renderOverlay(); updateOCRButtons(); });
+    div.querySelector('.reject-btn').addEventListener('click', () => { card.accepted = false; renderCardList(); renderOverlay(); updateOCRButtons(); });
+    itemsEl.appendChild(div);
+  }
+}
+
+// ── Detection status bar ───────────────────────────────────────────────────────
+function setDetStatus(html, isError) {
+  const el = $('det-status');
+  el.innerHTML = html;
+  el.style.color = isError ? 'var(--red)' : '';
+}
+
+// ── Upload handling ────────────────────────────────────────────────────────────
+function processFiles(files) {
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) { toast('Not an image: ' + file.name); continue; }
+    const reader = new FileReader();
+    reader.onload = e => addPhoto(e.target.result, file.name);
+    reader.readAsDataURL(file);
+  }
+}
+
+function addPhoto(dataUrl, name) {
+  const img = new Image();
+  img.onload = () => {
+    const photo = { id: uuid(), dataUrl, name: name || 'photo', naturalW: img.naturalWidth, naturalH: img.naturalHeight, _img: img };
+    S.photos.push(photo);
+    renderPhotoStrip();
+    setActivePhoto(photo.id);
+    detectCardsInPhoto(photo.id);
+  };
+  img.src = dataUrl;
+}
+
+function setActivePhoto(photoId) {
+  S.activePhotoId = photoId;
+  S.activeCardId = null;
+  S.drawMode = false;
+
+  const photo = photoById(photoId);
+  const img = $('active-photo');
+  img.onload = () => {
+    $('overlay-canvas').width  = img.offsetWidth;
+    $('overlay-canvas').height = img.offsetHeight;
+    renderOverlay();
+    renderCardList();
+    renderRotControls();
+  };
+  img.src = photo.dataUrl;
+
+  $('upload-zone').style.display = 'none';
+  const sc = $('scan-content');
+  sc.style.display = 'flex';
+  sc.style.flex    = '1';
+  sc.style.flexDirection = 'column';
+  sc.style.overflow = 'hidden';
+
+  renderPhotoStrip();
+  renderCardList();
+  setDetStatus('', false);
+  $('btn-redetect').style.display = '';
+  updateOCRButtons();
+}
+
+function renderPhotoStrip() {
+  const strip = $('photo-strip');
+  strip.innerHTML = '';
+  for (const photo of S.photos) {
+    const t = document.createElement('div');
+    t.className = 'thumb' + (photo.id === S.activePhotoId ? ' active' : '');
+    t.innerHTML = `<img src="${photo.dataUrl}" alt=""><button class="thumb-del" data-id="${photo.id}">✕</button>`;
+    t.addEventListener('click', e => {
+      if (e.target.classList.contains('thumb-del')) return;
+      setActivePhoto(photo.id);
+    });
+    t.querySelector('.thumb-del').addEventListener('click', e => {
+      e.stopPropagation(); removePhoto(photo.id);
+    });
+    strip.appendChild(t);
+  }
+  const add = document.createElement('div');
+  add.className = 'thumb-add';
+  add.textContent = '+';
+  add.addEventListener('click', () => $('fileInput').click());
+  strip.appendChild(add);
+}
+
+function removePhoto(photoId) {
+  S.cards = S.cards.filter(c => c.photoId !== photoId);
+  S.photos = S.photos.filter(p => p.id !== photoId);
+  if (S.activePhotoId === photoId) {
+    if (S.photos.length) setActivePhoto(S.photos[S.photos.length-1].id);
+    else resetToUpload();
+  } else renderPhotoStrip();
+}
+
+function resetToUpload() {
+  S.activePhotoId = null; S.activeCardId = null;
+  $('upload-zone').style.display = '';
+  $('scan-content').style.display = 'none';
+  $('btn-redetect').style.display = 'none';
+  renderPhotoStrip();
+  renderTokensPanel();
+  renderContactsPanel();
+  updateOCRButtons();
+}
+
+// ── OCR buttons state ─────────────────────────────────────────────────────────
+function updateOCRButtons() {
+  const hasCard = !!S.activeCardId && cardById(S.activeCardId)?.accepted;
+  const hasAny  = cardsForPhoto(S.activePhotoId).some(c => c.accepted);
+  $('btn-ocr-card').disabled = !hasCard;
+  $('btn-ocr-all').disabled  = !hasAny;
+}
+
+// ── Tesseract ─────────────────────────────────────────────────────────────────
+let tWorkerEng = null, tWorkerCJK = null;
 
 async function loadTesseract() {
   if (window.Tesseract) return;
@@ -1157,358 +1136,457 @@ async function loadTesseract() {
 
 async function ensureWorker(useCJK, onProgress) {
   await loadTesseract();
-  const langs = useCJK ? 'eng+chi_sim' : 'eng';
   let w = useCJK ? tWorkerCJK : tWorkerEng;
   if (!w) {
     if (onProgress) onProgress(useCJK ? 'Loading Chinese + English model…' : 'Loading English model…');
-    w = await Tesseract.createWorker(langs, 1, {
+    w = await Tesseract.createWorker(useCJK ? 'eng+chi_sim' : 'eng', 1, {
       logger: m => { if (m.status === 'recognizing text' && onProgress) onProgress(null, m.progress); }
     });
-    await w.setParameters({
-      tessedit_pageseg_mode: '6',          // PSM 6 — assume single uniform block of text
-      preserve_interword_spaces: '1',
-    });
+    await w.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' });
     if (useCJK) tWorkerCJK = w; else tWorkerEng = w;
   }
   return w;
 }
 
-// Tier A preprocessing: upscale to ~300 DPI equivalent + grayscale + contrast stretch.
-// Tesseract is calibrated for ~300 DPI; phone-dewarped cards are often 600–1000px on long edge.
+// Tier A preprocessing (reused from prior iteration)
 function preprocessForOCR(canvas) {
   const targetMax = 1800;
   const curMax = Math.max(canvas.width, canvas.height);
   const scale = curMax < targetMax ? Math.min(3, targetMax / curMax) : 1;
-  const W = Math.round(canvas.width * scale);
-  const H = Math.round(canvas.height * scale);
-
-  const out = document.createElement('canvas');
-  out.width = W; out.height = H;
+  const W = Math.round(canvas.width * scale), H = Math.round(canvas.height * scale);
+  const out = document.createElement('canvas'); out.width = W; out.height = H;
   const ctx = out.getContext('2d');
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(canvas, 0, 0, W, H);
-
-  const img = ctx.getImageData(0, 0, W, H);
-  const d = img.data;
-
-  // Build luminance histogram for percentile-based contrast stretch (robust to outliers)
+  const img = ctx.getImageData(0, 0, W, H); const d = img.data;
   const hist = new Uint32Array(256);
-  for (let i = 0; i < d.length; i += 4) {
-    const y = (0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]) | 0;
-    hist[y]++;
-  }
-  const total = (d.length / 4) | 0;
-  const lowCut = total * 0.01, highCut = total * 0.99;
-  let acc = 0, lo = 0, hi = 255;
-  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= lowCut) { lo = v; break; } }
-  acc = 0;
-  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= highCut) { hi = v; break; } }
-  const range = Math.max(1, hi - lo);
-
-  for (let i = 0; i < d.length; i += 4) {
-    const y = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
-    let s = ((y - lo) / range) * 255;
-    if (s < 0) s = 0; else if (s > 255) s = 255;
-    d[i] = d[i+1] = d[i+2] = s;
-  }
+  for (let i = 0; i < d.length; i += 4) hist[(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2])|0]++;
+  const total = d.length/4|0;
+  let acc=0, lo=0, hi=255;
+  for (let v=0;v<256;v++){acc+=hist[v];if(acc>=total*.01){lo=v;break;}} acc=0;
+  for (let v=0;v<256;v++){acc+=hist[v];if(acc>=total*.99){hi=v;break;}}
+  const range = Math.max(1, hi-lo);
+  for (let i=0;i<d.length;i+=4){ let s=((0.299*d[i]+0.587*d[i+1]+0.114*d[i+2])-lo)/range*255; s=Math.max(0,Math.min(255,s)); d[i]=d[i+1]=d[i+2]=s; }
   ctx.putImageData(img, 0, 0);
   return out;
 }
 
-async function runOCR(canvas, useCJK) {
-  const pre = preprocessForOCR(canvas);
-  const w = useCJK ? tWorkerCJK : tWorkerEng;
-  const { data } = await w.recognize(pre);
-  return { text: data.text, words: data.words || [], confidence: data.confidence };
-}
+async function runOCROnCard(cardId) {
+  const card = cardById(cardId);
+  const photo = card ? photoById(card.photoId) : null;
+  if (!card || !photo) return;
 
-async function runOCRBatch(cards) {
-  showScreen('screen-processing');
-  setCrumb('OCR Processing');
-  $('progFill').style.width = '0%';
-  $('procMsg').textContent = 'Initialising recognition engine…';
-
-  const useCJK = !!(S && S.useCJK);
+  card.ocrStatus = 'running';
+  renderCardList();
+  updateHdrStatus();
 
   try {
-    await ensureWorker(useCJK, msg => { if (msg) $('procMsg').textContent = msg; });
-  } catch(err) {
-    showToast('Tesseract load failed — ' + err.message, 5000);
-    showScreen('screen-detect');
-    return;
-  }
+    // Build crop canvas if not cached
+    if (!card.cropCanvas) card.cropCanvas = buildCropCanvas(card, photo);
+    if (!card.cropCanvas) throw new Error('Could not crop card');
 
-  S.ocrResults = [];
-  for (let i = 0; i < cards.length; i++) {
-    $('procMsg').textContent = `Processing card ${i+1} of ${cards.length}…`;
-    $('progFill').style.width = ((i / cards.length) * 80) + '%';
-    try {
-      const { text } = await runOCR(cards[i].cropCanvas, useCJK);
-      S.ocrResults.push({ fields: parseFields(text, cards[i].cropCanvas), cropCanvas: cards[i].cropCanvas });
-    } catch(e) {
-      S.ocrResults.push({ fields: emptyFields(), cropCanvas: cards[i].cropCanvas });
+    const pre = preprocessForOCR(card.cropCanvas);
+    const w = await ensureWorker(S.useCJK, msg => setDetStatus(`<span class="spinner"></span> ${msg}`, false));
+    const { data } = await w.recognize(pre);
+    card.ocrStatus = 'done';
+    const rawText = data.text;
+
+    // Parse fields
+    const fields = parseFields(rawText);
+
+    // Build or update contact
+    let contact = contactByCardId(cardId);
+    if (!contact) {
+      contact = { id: uuid(), cardId, ...fields };
+      S.contacts.push(contact);
+    } else {
+      Object.assign(contact, fields);
     }
+    S.activeContactId = contact.id;
+
+    // Build tokens
+    S.tokens = S.tokens.filter(t => t.cardId !== cardId); // clear old
+    const rawLines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+    const assignedValues = new Set([
+      ...fields.emails, ...fields.phones, fields.linkedin, fields.website,
+      fields.name, fields.title, fields.company,
+    ].filter(Boolean));
+
+    for (const e of fields.emails)  S.tokens.push({ id: uuid(), cardId, kind: 'email',    value: e,               assignedTo: { contactId: contact.id, field: 'emails' } });
+    for (const p of fields.phones)  S.tokens.push({ id: uuid(), cardId, kind: 'phone',    value: p,               assignedTo: { contactId: contact.id, field: 'phones' } });
+    if (fields.linkedin)             S.tokens.push({ id: uuid(), cardId, kind: 'linkedin', value: fields.linkedin, assignedTo: { contactId: contact.id, field: 'linkedin' } });
+    if (fields.website)              S.tokens.push({ id: uuid(), cardId, kind: 'url',      value: fields.website,  assignedTo: { contactId: contact.id, field: 'website' } });
+
+    for (const line of rawLines) {
+      const already = [...assignedValues].some(v => v && line.includes(v));
+      if (!already && line.length > 1) {
+        const field = line === fields.name    ? 'name' :
+                      line === fields.title   ? 'title' :
+                      line === fields.company ? 'company' : null;
+        S.tokens.push({ id: uuid(), cardId, kind: 'line', value: line, assignedTo: field ? { contactId: contact.id, field } : null });
+      }
+    }
+
+    setDetStatus(`✓ OCR done — ${rawLines.length} lines extracted`, false);
+  } catch(e) {
+    card.ocrStatus = 'error';
+    toast('OCR failed: ' + e.message, 5000);
+    setDetStatus('⚠ OCR failed', true);
   }
 
-  $('progFill').style.width = '100%';
-  $('procMsg').textContent = 'Done!';
-  await new Promise(r => setTimeout(r, 400));
-
-  S.contacts = [];
-  S.currentConfirmIdx = 0;
-  showScreen('screen-confirm');
-  setCrumb('Confirm');
-  renderConfirmCard(0);
+  renderCardList();
+  renderTokensPanel();
+  renderContactsPanel();
+  updateHdrStatus();
 }
 
 // ── Field parser ──────────────────────────────────────────────────────────────
-function emptyFields() {
-  return { name:'', title:'', company:'', emails:[], phones:[], linkedin:'', website:'' };
-}
-
 function parseFields(text) {
-  const emails = [...(text.matchAll(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi))].map(m => m[0]);
-
-  const phones = [...(text.matchAll(/(\+?[\d\s\-(). ]{7,20})/g))]
-    .map(m => m[1].trim())
-    .filter(p => (p.match(/\d/g)||[]).length >= 6 && (p.match(/\d/g)||[]).length <= 15)
-    .filter(p => !emails.some(e => e.includes(p.replace(/\D/g,''))))
-    .filter((p,i,a) => a.indexOf(p) === i);
-
-  const linkedins = [...(text.matchAll(/linkedin\.com\/in\/[\w-]+/gi))].map(m => m[0]);
-
-  const websites = [...(text.matchAll(/(https?:\/\/)?[\w.-]+\.(com|co|io|net|org|hk|sg|cn)[/\w.-]*/gi))]
-    .map(m => m[0])
-    .filter(w => !linkedins.some(l => w.includes('linkedin')) && !emails.some(e => e.includes(w)));
-
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const emails = [...text.matchAll(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi)].map(m=>m[0]);
+  const phones = [...text.matchAll(/(\+?[\d\s\-(). ]{7,20})/g)].map(m=>m[1].trim())
+    .filter(p=>(p.match(/\d/g)||[]).length>=6&&(p.match(/\d/g)||[]).length<=15)
+    .filter(p=>!emails.some(e=>e.includes(p.replace(/\D/g,''))))
+    .filter((p,i,a)=>a.indexOf(p)===i);
+  const linkedins = [...text.matchAll(/linkedin\.com\/in\/[\w-]+/gi)].map(m=>m[0]);
+  const websites = [...text.matchAll(/(https?:\/\/)?[\w.-]+\.(com|co|io|net|org|hk|sg|cn)[/\w.-]*/gi)].map(m=>m[0])
+    .filter(w=>!linkedins.some(l=>w.includes('linkedin'))&&!emails.some(e=>e.includes(w)));
+  const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
   const titleKw = /\b(director|manager|vp|svp|evp|ceo|cfo|coo|cto|founder|partner|head|senior|associate|analyst|officer|president|principal)\b|总监|经理|总裁|主席|副总/i;
   const companyKw = /\b(ltd|llc|pte|inc|corp|group|capital|fund|partners|holdings|ventures|advisors|advisory|asset|management)\b|有限公司|集团|基金/i;
-
-  let name = '', title = '', company = '';
+  let name='', title='', company='';
   for (const line of lines) {
-    if (emails.some(e => line.includes(e))) continue;
-    if (phones.some(p => line.includes(p.slice(0,5)))) continue;
-    if (websites.some(w => line.toLowerCase().includes(w.toLowerCase().slice(0,8)))) continue;
-
-    if (!title && titleKw.test(line)) { title = line; continue; }
-    if (!company && companyKw.test(line)) { company = line; continue; }
+    if (emails.some(e=>line.includes(e))) continue;
+    if (phones.some(p=>line.includes(p.slice(0,5)))) continue;
+    if (websites.some(w=>line.toLowerCase().includes(w.toLowerCase().slice(0,8)))) continue;
+    if (!title&&titleKw.test(line)) { title=line; continue; }
+    if (!company&&companyKw.test(line)) { company=line; continue; }
     if (!name) {
-      const words = line.split(/\s+/).filter(Boolean);
-      const hasCJK = /[\u4e00-\u9fff]/.test(line);
-      if (hasCJK && line.replace(/\s/g,'').length >= 2 && line.replace(/\s/g,'').length <= 6) { name = line; continue; }
-      if (!hasCJK && words.length >= 2 && words.length <= 4 && /^[A-Z]/.test(line)) { name = line; continue; }
+      const words=line.split(/\s+/).filter(Boolean);
+      const hasCJK=/[\u4e00-\u9fff]/.test(line);
+      if (hasCJK&&line.replace(/\s/g,'').length>=2&&line.replace(/\s/g,'').length<=6){name=line;continue;}
+      if (!hasCJK&&words.length>=2&&words.length<=4&&/^[A-Z]/.test(line)){name=line;continue;}
     }
   }
-
-  return {
-    name, title, company,
-    emails: emails.filter((e,i,a)=>a.indexOf(e)===i),
-    phones: phones.slice(0,5),
-    linkedin: linkedins[0] || '',
-    website: websites.filter(w=>!w.includes('linkedin'))[0] || '',
-  };
+  return { name, title, company, emails: emails.filter((e,i,a)=>a.indexOf(e)===i), phones: phones.slice(0,5), linkedin: linkedins[0]||'', website: websites.filter(w=>!w.includes('linkedin'))[0]||'' };
 }
 
-// ── Confirm screen ────────────────────────────────────────────────────────────
-function renderConfirmCard(idx) {
-  if (idx >= S.ocrResults.length) {
-    showScreen('screen-results');
-    setCrumb('Results');
-    renderResults();
+// ── Panel 2: Tokens ───────────────────────────────────────────────────────────
+function renderTokensPanel() {
+  const body = $('tokens-body');
+  const activeContact = S.activeContactId ? S.contacts.find(c=>c.id===S.activeContactId) : null;
+  const tokens = S.tokens;
+
+  if (!tokens.length) {
+    body.innerHTML = '<div class="tokens-empty">Select a card in Panel 1<br>then run OCR to see tokens</div>';
     return;
   }
-  S.currentConfirmIdx = idx;
-  const { fields, cropCanvas } = S.ocrResults[idx];
 
-  // Card image
-  const canvas = $('confCanvas');
-  canvas.width  = cropCanvas.width;
-  canvas.height = cropCanvas.height;
-  canvas.getContext('2d').drawImage(cropCanvas, 0, 0);
+  const emails    = tokens.filter(t => t.kind === 'email');
+  const phones    = tokens.filter(t => t.kind === 'phone');
+  const linkedins = tokens.filter(t => t.kind === 'linkedin');
+  const urls      = tokens.filter(t => t.kind === 'url');
+  const lines     = tokens.filter(t => t.kind === 'line');
 
-  $('confLbl').textContent = `Card ${idx+1} of ${S.ocrResults.length}`;
-  $('confPrev').disabled = idx === 0;
-  $('confNext').disabled = idx === S.ocrResults.length - 1;
-
-  // Fields
-  const body = $('confBody');
   body.innerHTML = '';
 
-  const f = {...fields}; // editable copy
+  function isActive(t) { return activeContact && t.assignedTo && t.assignedTo.contactId === activeContact.id; }
+  function srcClass(t) { return isActive(t) ? 'src-active' : (t.assignedTo ? 'assigned' : ''); }
 
-  function textField(label, key, multiline) {
-    const row = document.createElement('div'); row.className = 'f-row';
-    const lbl = document.createElement('div'); lbl.className = 'f-label'; lbl.textContent = label;
-    if (multiline) {
-      const ta = document.createElement('textarea');
-      ta.className = 'f-input'; ta.rows = 2; ta.value = f[key] || '';
-      ta.oninput = () => { f[key] = ta.value; };
-      row.appendChild(lbl); row.appendChild(ta);
-    } else {
-      const inp = document.createElement('input');
-      inp.type = 'text'; inp.className = 'f-input'; inp.value = f[key] || '';
-      inp.oninput = () => { f[key] = inp.value; };
-      row.appendChild(lbl); row.appendChild(inp);
+  function chipGroup(title, list) {
+    if (!list.length) return;
+    const g = document.createElement('div'); g.className = 'token-group';
+    g.innerHTML = `<div class="token-group-title">${title}</div><div class="token-chips"></div>`;
+    const chips = g.querySelector('.token-chips');
+    for (const t of list) {
+      const chip = document.createElement('div');
+      chip.className = `token-chip ${srcClass(t)}`; chip.draggable = true;
+      chip.dataset.tokenId = t.id;
+      chip.innerHTML = `<span>${t.value}</span><span class="token-src">C${cardById(t.cardId)?.num||'?'}</span>`;
+      addTokenDragHandlers(chip, t);
+      chips.appendChild(chip);
     }
-    body.appendChild(row);
-    return row;
+    body.appendChild(g);
   }
 
-  function chipField(label, key) {
-    const row = document.createElement('div'); row.className = 'f-row';
-    const lbl = document.createElement('div'); lbl.className = 'f-label'; lbl.textContent = label;
-    const wrap = document.createElement('div'); wrap.className = 'chip-wrap';
+  function lineGroup(title, list) {
+    if (!list.length) return;
+    const g = document.createElement('div'); g.className = 'token-group';
+    g.innerHTML = `<div class="token-group-title">${title}</div><div class="token-lines"></div>`;
+    const linesEl = g.querySelector('.token-lines');
+    for (const t of list) {
+      const line = document.createElement('div');
+      line.className = `token-line ${srcClass(t)}`; line.draggable = true;
+      line.dataset.tokenId = t.id;
+      line.innerHTML = `<span class="token-line-val" title="${t.value}">${t.value}</span><span class="token-src">C${cardById(t.cardId)?.num||'?'}</span>`;
+      addTokenDragHandlers(line, t);
+      linesEl.appendChild(line);
+    }
+    body.appendChild(g);
+  }
 
-    function renderChips() {
-      wrap.innerHTML = '';
-      (f[key]||[]).forEach((v, i) => {
-        const chip = document.createElement('span'); chip.className = 'chip';
-        chip.textContent = v;
-        const rm = document.createElement('button'); rm.textContent = '×';
-        rm.onclick = () => { f[key].splice(i,1); renderChips(); };
-        chip.appendChild(rm); wrap.appendChild(chip);
+  chipGroup('Emails', emails);
+  chipGroup('Phones', phones);
+  chipGroup('LinkedIn', linkedins);
+  chipGroup('URLs', urls);
+  lineGroup('Text Lines', lines);
+}
+
+function addTokenDragHandlers(el, token) {
+  el.addEventListener('dragstart', e => {
+    e.dataTransfer.setData('text/plain', token.id);
+    e.dataTransfer.effectAllowed = 'copy';
+  });
+  el.addEventListener('click', () => {
+    // Click-to-assign: if there's an active field, assign to it
+    if (S.activeFieldKey && S.activeContactId) {
+      assignToken(token.id, S.activeContactId, S.activeFieldKey);
+    }
+  });
+}
+
+// ── Panel 3: Contacts ─────────────────────────────────────────────────────────
+let S_activeFieldKey = null;
+Object.defineProperty(S, 'activeFieldKey', {
+  get() { return S_activeFieldKey; },
+  set(v) { S_activeFieldKey = v; },
+});
+
+const FIELDS = [
+  { key: 'name',    label: 'Name',    multi: false },
+  { key: 'title',   label: 'Title',   multi: false },
+  { key: 'company', label: 'Company', multi: false },
+  { key: 'emails',  label: 'Emails',  multi: true  },
+  { key: 'phones',  label: 'Phones',  multi: true  },
+  { key: 'linkedin',label: 'LinkedIn',multi: false },
+  { key: 'website', label: 'Website', multi: false },
+];
+
+function renderContactsPanel() {
+  const body = $('contacts-body');
+  if (!S.contacts.length) {
+    body.innerHTML = '<div class="contacts-empty">Contacts appear here after OCR runs</div>';
+    return;
+  }
+  body.innerHTML = '';
+  for (const contact of S.contacts) {
+    const card = cardById(contact.cardId);
+    const row = document.createElement('div');
+    row.className = 'contact-row' + (contact.id === S.activeContactId ? ' active-contact' : '');
+    row.addEventListener('click', e => {
+      if (e.target.closest('.cf-val')) return;
+      S.activeContactId = contact.id;
+      S.activeCardId = contact.cardId;
+      renderContactsPanel(); renderCardList(); renderOverlay(); renderTokensPanel();
+    });
+
+    const nameHtml = contact.name || `<span style="color:var(--muted)">Unknown</span>`;
+    const compHtml = contact.company || '';
+
+    let fieldsHtml = '<div class="contact-fields">';
+    for (const f of FIELDS) {
+      fieldsHtml += `<div class="cf-label">${f.label}</div>`;
+      if (f.multi) {
+        const vals = contact[f.key] || [];
+        let chips = vals.map((v,i) => `<div class="chip">${v}<button class="chip-del" data-fkey="${f.key}" data-idx="${i}" data-cid="${contact.id}">×</button></div>`).join('');
+        fieldsHtml += `<div class="cf-val chip-list drop-target" data-fkey="${f.key}" data-cid="${contact.id}" data-multi="1">${chips}<button class="chip-add" data-fkey="${f.key}" data-cid="${contact.id}">+ add</button></div>`;
+      } else {
+        const val = contact[f.key] || '';
+        fieldsHtml += `<div class="cf-val" contenteditable="true" data-fkey="${f.key}" data-cid="${contact.id}">${val}</div>`;
+      }
+    }
+    fieldsHtml += '</div>';
+
+    row.innerHTML = `
+      <div class="contact-hd">
+        <div class="contact-num">${card ? card.num : '?'}</div>
+        <div><div class="contact-name">${nameHtml}</div><div class="contact-company">${compHtml}</div></div>
+      </div>
+      ${fieldsHtml}`;
+
+    // Editable single-value fields
+    row.querySelectorAll('.cf-val[contenteditable]').forEach(el => {
+      el.addEventListener('focus', () => {
+        S.activeContactId = contact.id;
+        S.activeFieldKey = el.dataset.fkey;
+        el.classList.add('active-field');
       });
-      const inp = document.createElement('input');
-      inp.type = 'text'; inp.className = 'chip-in'; inp.placeholder = '+ add';
-      inp.onkeydown = e => {
-        if (e.key === 'Enter' && inp.value.trim()) {
-          if (!f[key]) f[key] = [];
-          f[key].push(inp.value.trim()); inp.value = ''; renderChips();
-        }
-        if (e.key === 'Backspace' && !inp.value && f[key]?.length) {
-          f[key].pop(); renderChips();
-        }
-      };
-      inp.onblur = () => {
-        if (inp.value.trim()) {
-          if (!f[key]) f[key] = [];
-          f[key].push(inp.value.trim()); inp.value = ''; renderChips();
-        }
-      };
-      wrap.appendChild(inp);
-      wrap.onclick = () => inp.focus();
-    }
+      el.addEventListener('blur', () => {
+        const c = S.contacts.find(c=>c.id===el.dataset.cid);
+        if (c) c[el.dataset.fkey] = el.textContent.trim();
+        el.classList.remove('active-field');
+        S.activeFieldKey = null;
+        renderTokensPanel();
+      });
+    });
 
-    renderChips();
-    row.appendChild(lbl); row.appendChild(wrap);
+    // Multi-value chip delete
+    row.querySelectorAll('.chip-del').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const c = S.contacts.find(c=>c.id===btn.dataset.cid);
+        if (c) { c[btn.dataset.fkey].splice(+btn.dataset.idx, 1); }
+        renderContactsPanel(); renderTokensPanel();
+      });
+    });
+
+    // Multi-value add button
+    row.querySelectorAll('.chip-add').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const val = prompt(`Add ${btn.dataset.fkey.replace(/s$/,'')}:`);
+        if (val && val.trim()) {
+          const c = S.contacts.find(c=>c.id===btn.dataset.cid);
+          if (c) c[btn.dataset.fkey].push(val.trim());
+          renderContactsPanel();
+        }
+      });
+    });
+
+    // Drop targets
+    row.querySelectorAll('.drop-target, .cf-val[contenteditable]').forEach(el => {
+      el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drop-hover'); });
+      el.addEventListener('dragleave', () => el.classList.remove('drop-hover'));
+      el.addEventListener('drop', e => {
+        e.preventDefault(); e.stopPropagation();
+        el.classList.remove('drop-hover');
+        const tokenId = e.dataTransfer.getData('text/plain');
+        assignToken(tokenId, contact.id, el.dataset.fkey);
+      });
+    });
+
     body.appendChild(row);
   }
-
-  textField('Name', 'name');
-  textField('Title', 'title');
-  textField('Company', 'company');
-  chipField('Email', 'emails');
-  chipField('Phone', 'phones');
-  textField('LinkedIn', 'linkedin');
-  textField('Website', 'website');
-
-  // Nav
-  $('confPrev').onclick = () => renderConfirmCard(idx - 1);
-  $('confNext').onclick = () => renderConfirmCard(idx + 1);
-
-  $('confSkip').onclick = () => renderConfirmCard(idx + 1);
-  $('confSave').onclick = () => {
-    S.contacts.push({...f, cropCanvas});
-    renderConfirmCard(idx + 1);
-  };
 }
 
-function initConfirm() {
-  // Confirm screen wired dynamically via renderConfirmCard
-}
+function assignToken(tokenId, contactId, field) {
+  const token = S.tokens.find(t => t.id === tokenId);
+  const contact = S.contacts.find(c => c.id === contactId);
+  if (!token || !contact) return;
 
-// ── Results screen ────────────────────────────────────────────────────────────
-function renderResults() {
-  const n = S.contacts.length;
-  $('resTitle').textContent = `${n} contact${n===1?'':'s'} saved`;
-  const body = $('resBody');
-  body.innerHTML = '';
-
-  if (!n) {
-    const tr = document.createElement('tr');
-    tr.className = 'empty-row';
-    const td = document.createElement('td'); td.colSpan = 6; td.textContent = 'No contacts saved.';
-    tr.appendChild(td); body.appendChild(tr);
-    return;
+  const isMulti = FIELDS.find(f=>f.key===field)?.multi;
+  if (isMulti) {
+    if (!Array.isArray(contact[field])) contact[field] = [];
+    if (!contact[field].includes(token.value)) contact[field].push(token.value);
+  } else {
+    contact[field] = token.value;
   }
-
-  S.contacts.forEach(c => {
-    const tr = document.createElement('tr');
-    const thumb = c.cropCanvas ? `<img class="thumb-img" src="${c.cropCanvas.toDataURL('image/jpeg',.7)}">` : '';
-    tr.innerHTML = `
-      <td>${thumb}</td>
-      <td>${esc(c.name)}</td>
-      <td>${esc(c.title)}</td>
-      <td>${esc(c.company)}</td>
-      <td>${(c.emails||[]).map(esc).join('<br>')}</td>
-      <td>${(c.phones||[]).map(esc).join('<br>')}</td>`;
-    body.appendChild(tr);
-  });
+  token.assignedTo = { contactId, field };
+  S.activeFieldKey = null;
+  renderContactsPanel();
+  renderTokensPanel();
 }
 
-function esc(s) {
-  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+// ── Header status ──────────────────────────────────────────────────────────────
+function updateHdrStatus() {
+  const total = S.contacts.length;
+  const done  = S.cards.filter(c=>c.ocrStatus==='done').length;
+  $('hdr-status').textContent = total ? `${done} card${done!==1?'s':''} processed · ${total} contact${total!==1?'s':''}` : '';
 }
 
-function initResults() {
-  $('expCsvBtn').onclick  = exportCSV;
-  $('expJsonBtn').onclick = exportJSON;
-  $('expVcfBtn').onclick  = exportVCF;
-  $('startOverBtn').onclick = () => {
-    S.photos = []; S.photoCards = []; S.allCards = []; S.ocrResults = []; S.contacts = [];
-    $('photoGrid').innerHTML = ''; $('uploadAct').style.display = 'none';
-    if (tWorker) { tWorker.terminate(); tWorker = null; }
-    showScreen('screen-upload'); setCrumb('');
-  };
-}
-
-// ── Export ────────────────────────────────────────────────────────────────────
+// ── Export stubs ───────────────────────────────────────────────────────────────
 function exportCSV() {
-  const header = 'name,title,company,email,phone,linkedin,website';
-  const rows = S.contacts.map(c => [
-    c.name, c.title, c.company,
-    (c.emails||[]).join('|'), (c.phones||[]).join('|'),
-    c.linkedin, c.website,
-  ].map(v => `"${(v||'').replace(/"/g,'""')}"`).join(','));
-  const blob = new Blob([header + '\n' + rows.join('\n')], {type:'text/csv'});
-  dl(`name-cards-${todayStr()}.csv`, URL.createObjectURL(blob));
+  if (!S.contacts.length) { toast('No contacts to export'); return; }
+  const rows = [['name','title','company','email','phone','linkedin','website']];
+  for (const c of S.contacts) rows.push([c.name,c.title,c.company,(c.emails||[]).join('|'),(c.phones||[]).join('|'),c.linkedin,c.website].map(v=>'"'+(v||'').replace(/"/g,'""')+'"'));
+  download('card-capture.csv', rows.map(r=>r.join(',')).join('\n'), 'text/csv');
 }
-
 function exportJSON() {
-  const data = {
-    exported_at: new Date().toISOString(),
-    count: S.contacts.length,
-    contacts: S.contacts.map(c => ({
-      name: c.name, title: c.title, company: c.company,
-      emails: c.emails, phones: c.phones, linkedin: c.linkedin, website: c.website,
-    })),
-  };
-  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
-  dl(`name-cards-${todayStr()}.json`, URL.createObjectURL(blob));
+  if (!S.contacts.length) { toast('No contacts to export'); return; }
+  download('card-capture.json', JSON.stringify({ contacts: S.contacts, exported_at: new Date().toISOString() }, null, 2), 'application/json');
 }
-
 function exportVCF() {
-  const cards = S.contacts.map(c => {
-    const lines = ['BEGIN:VCARD','VERSION:3.0'];
-    if (c.name) lines.push(`FN:${c.name}`);
-    if (c.title || c.company) lines.push(`ORG:${c.company||''}`);
-    if (c.title) lines.push(`TITLE:${c.title}`);
-    (c.emails||[]).forEach(e => lines.push(`EMAIL:${e}`));
-    (c.phones||[]).forEach(p => lines.push(`TEL:${p}`));
-    if (c.linkedin) lines.push(`URL:https://${c.linkedin.startsWith('http') ? c.linkedin.replace(/^https?:\/\//,'') : c.linkedin}`);
-    else if (c.website) lines.push(`URL:${c.website}`);
-    lines.push('END:VCARD');
-    return lines.join('\r\n');
-  });
-  const blob = new Blob([cards.join('\r\n\r\n')], {type:'text/vcard'});
-  dl(`name-cards-${todayStr()}.vcf`, URL.createObjectURL(blob));
+  if (!S.contacts.length) { toast('No contacts to export'); return; }
+  const vcf = S.contacts.map(c => [
+    'BEGIN:VCARD','VERSION:3.0',
+    c.name    ? `FN:${c.name}`    : '',
+    c.title   ? `TITLE:${c.title}` : '',
+    c.company ? `ORG:${c.company}` : '',
+    ...(c.emails||[]).map(e=>`EMAIL:${e}`),
+    ...(c.phones||[]).map(p=>`TEL:${p}`),
+    c.linkedin ? `URL:https://${c.linkedin}` : '',
+    c.website  ? `URL:${c.website}` : '',
+    'END:VCARD',
+  ].filter(Boolean).join('\n')).join('\n\n');
+  download('card-capture.vcf', vcf, 'text/vcard');
+}
+function download(name, content, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], { type }));
+  a.download = name; a.click();
 }
 
-// ── Init ──────────────────────────────────────────────────────────────────────
-initUpload();
-initResults();
+// ── Init & event wiring ────────────────────────────────────────────────────────
+function init() {
+  // Upload zone
+  const zone = $('upload-zone');
+  zone.addEventListener('click', () => $('fileInput').click());
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); processFiles(Array.from(e.dataTransfer.files)); });
+
+  // File input
+  $('fileInput').addEventListener('change', e => { processFiles(Array.from(e.target.files)); e.target.value=''; });
+
+  // Paste
+  document.addEventListener('paste', e => {
+    const imgs = Array.from(e.clipboardData.items).filter(i => i.type.startsWith('image/'));
+    if (!imgs.length) return;
+    e.preventDefault();
+    imgs.forEach(i => { const f = i.getAsFile(); if (f) processFiles([f]); });
+  });
+
+  // Re-detect
+  $('btn-redetect').addEventListener('click', () => { if (S.activePhotoId) detectCardsInPhoto(S.activePhotoId); });
+
+  // Clear all
+  $('btn-clear-all').addEventListener('click', () => {
+    if (!S.photos.length || confirm('Clear all photos and contacts?')) {
+      S.photos = []; S.cards = []; S.tokens = []; S.contacts = [];
+      S.activePhotoId = null; S.activeCardId = null; S.cardCounter = 0;
+      resetToUpload(); updateHdrStatus();
+    }
+  });
+
+  // Draw card manually
+  $('btn-draw-card').addEventListener('click', () => {
+    S.drawMode = true;
+    $('overlay-canvas').style.cursor = 'crosshair';
+    toast('Drag on the photo to draw a card boundary');
+  });
+
+  // OCR buttons
+  $('btn-ocr-card').addEventListener('click', () => { if (S.activeCardId) runOCROnCard(S.activeCardId); });
+  $('btn-ocr-all').addEventListener('click', async () => {
+    const cards = cardsForPhoto(S.activePhotoId).filter(c => c.accepted && c.ocrStatus !== 'done');
+    for (const card of cards) await runOCROnCard(card.id);
+  });
+
+  // Language toggle
+  $('use-cjk').addEventListener('change', e => { S.useCJK = e.target.checked; });
+
+  // Rotation
+  $('rot-ccw90').addEventListener('click', () => { const c=cardById(S.activeCardId); if(c){ doRotate(c,-90,0); c.cropCanvas=null; } });
+  $('rot-cw90') .addEventListener('click', () => { const c=cardById(S.activeCardId); if(c){ doRotate(c,+90,0); c.cropCanvas=null; } });
+  $('rot-ccw15').addEventListener('click', () => { const c=cardById(S.activeCardId); if(c){ doRotate(c,0,-15); $('rot-slider').value=c.rotFine; } });
+  $('rot-cw15') .addEventListener('click', () => { const c=cardById(S.activeCardId); if(c){ doRotate(c,0,+15); $('rot-slider').value=c.rotFine; } });
+  $('rot-slider').addEventListener('input', e => {
+    const c=cardById(S.activeCardId); if(!c) return;
+    c.rotFine = +e.target.value; c.cropCanvas = null; updateRotAngleDisplay(c);
+  });
+
+  // Export
+  $('btn-csv').addEventListener('click', exportCSV);
+  $('btn-json').addEventListener('click', exportJSON);
+  $('btn-vcf').addEventListener('click', exportVCF);
+
+  // Canvas overlay mouse events
+  setupOverlayEvents();
+
+  // Re-sync canvas on window resize
+  window.addEventListener('resize', () => { if (S.activePhotoId) renderOverlay(); });
+}
+
+document.addEventListener('DOMContentLoaded', init);
 </script>
 </body>
 </html>
