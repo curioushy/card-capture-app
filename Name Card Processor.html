@@ -432,11 +432,17 @@ function ensureCV() {
     s.async = true;
     s.onerror = () => cvCallbacks.forEach(cb => cb.rej(new Error('OpenCV load failed')));
     document.head.appendChild(s);
-    // OpenCV sets cv['onRuntimeInitialized']
     s.onload = () => {
       if (typeof cv === 'undefined') { cvCallbacks.forEach(cb => cb.rej(new Error('cv undefined'))); return; }
-      if (cv.getBuildInformation) { cvReady = true; cvCallbacks.forEach(cb => cb.res()); cvCallbacks = []; return; }
-      cv['onRuntimeInitialized'] = () => { cvReady = true; cvCallbacks.forEach(cb => cb.res()); cvCallbacks = []; };
+      let resolved = false;
+      const resolve = () => {
+        if (resolved) return; resolved = true;
+        cvReady = true; cvCallbacks.forEach(cb => cb.res()); cvCallbacks = [];
+      };
+      // Set callback first (handles case where WASM initialises after onload)
+      cv['onRuntimeInitialized'] = resolve;
+      // Check if WASM already initialised (cv.Mat available = ready)
+      try { const t = new cv.Mat(); t.delete(); resolve(); } catch(e) { /* wait for callback */ }
     };
   });
 }
@@ -461,7 +467,7 @@ function applyVariant(grayMat, variant) {
         clahe.apply(grayMat, out); clahe.delete(); break;
       }
       case 'histeq':   cv.equalizeHist(grayMat, out); break;
-      case 'bilateral': cv.bilateralFilter(grayMat, out, 9, 75, 75); break;
+      case 'bilateral': cv.bilateralFilter(grayMat, out, 5, 50, 50); break;
       case 'unsharp': {
         const blurred = new cv.Mat();
         cv.GaussianBlur(grayMat, blurred, new cv.Size(0, 0), 3);
@@ -606,12 +612,15 @@ async function detectCardsInPhoto(photoId) {
     return;
   }
 
-  // Load photo onto a canvas
-  const img = new Image();
-  await new Promise(res => { img.onload = res; img.src = photo.dataUrl; });
+  // Load photo onto a canvas, resized to max 800px for fast detection
+  const img = photo._img;
+  const MAX_DET = 800;
+  const detScale = Math.min(1, MAX_DET / Math.max(photo.naturalW, photo.naturalH));
+  const detW = Math.round(photo.naturalW * detScale);
+  const detH = Math.round(photo.naturalH * detScale);
   const srcCanvas = document.createElement('canvas');
-  srcCanvas.width = img.naturalWidth; srcCanvas.height = img.naturalHeight;
-  srcCanvas.getContext('2d').drawImage(img, 0, 0);
+  srcCanvas.width = detW; srcCanvas.height = detH;
+  srcCanvas.getContext('2d').drawImage(img, 0, 0, detW, detH);
 
   const srcMat = cv.imread(srcCanvas);
   const grayMat = new cv.Mat();
@@ -619,40 +628,44 @@ async function detectCardsInPhoto(photoId) {
   srcMat.delete();
 
   let allBoxes = [];
-  for (const variant of VARIANTS) {
+  for (let vi = 0; vi < VARIANTS.length; vi++) {
+    const variant = VARIANTS[vi];
+    setDetStatus(`<span class="spinner"></span> Detecting… variant ${vi+1}/${VARIANTS.length} (${variant})`, false);
+    await new Promise(r => setTimeout(r, 0)); // yield to browser so UI updates
     const vMat = applyVariant(grayMat, variant);
     try {
-      const boxes = detectRectanglesFromMat(vMat, img.naturalWidth, img.naturalHeight);
+      const boxes = detectRectanglesFromMat(vMat, detW, detH);
       allBoxes.push(...boxes);
     } catch(e) { /* skip failed variant */ }
     vMat.delete();
+    // Early exit: if first 3 variants already agree on ≥1 card with high confidence, skip slow ones
+    if (vi === 2) {
+      const early = wbfMerge(allBoxes, 3);
+      if (early.length > 0 && early[0].conf > 0.6) {
+        allBoxes = allBoxes.map(b => b); // keep accumulated, just stop
+        grayMat.delete();
+        const scaleBack = b => ({ ...b, corners: b.corners.map(p => ({ x: p.x/detScale, y: p.y/detScale })) });
+        finishDetection(photoId, wbfMerge(allBoxes, vi + 1).map(scaleBack)); // use actual variant count
+        return;
+      }
+    }
   }
   grayMat.delete();
+  const scaleBack = b => ({ ...b, corners: b.corners.map(p => ({ x: p.x/detScale, y: p.y/detScale })) });
+  finishDetection(photoId, wbfMerge(allBoxes, VARIANTS.length).map(scaleBack));
+}
 
-  const merged = wbfMerge(allBoxes, VARIANTS.length);
-
-  // Sort merged results left-to-right, top-to-bottom
+function finishDetection(photoId, merged) {
   merged.sort((a,b) => {
     const ay = Math.min(...a.corners.map(p=>p.y)), by = Math.min(...b.corners.map(p=>p.y));
     const ax = Math.min(...a.corners.map(p=>p.x)), bx = Math.min(...b.corners.map(p=>p.x));
     return (ay - by) || (ax - bx);
   });
-
   for (const box of merged) {
     S.cardCounter++;
-    S.cards.push({
-      id: uuid(), photoId, num: S.cardCounter,
-      corners: box.corners, accepted: true, manual: false,
-      ocrStatus: 'idle', rot90: 0, rotFine: 0, cropCanvas: null,
-    });
+    S.cards.push({ id: uuid(), photoId, num: S.cardCounter, corners: box.corners, accepted: true, manual: false, ocrStatus: 'idle', rot90: 0, rotFine: 0, cropCanvas: null });
   }
-
-  if (merged.length === 0) {
-    setDetStatus('No cards detected — draw one manually', false);
-  } else {
-    setDetStatus(`✓ Found ${merged.length} card${merged.length>1?'s':''}`, false);
-  }
-
+  setDetStatus(merged.length === 0 ? 'No cards detected — draw one manually' : `✓ Found ${merged.length} card${merged.length>1?'s':''}`, false);
   renderCardList();
   renderOverlay();
   renderContactsPanel();
