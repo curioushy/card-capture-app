@@ -266,6 +266,21 @@ input,textarea { font: inherit; }
 .badge-red { background: var(--red-bg); color: #dc2626; }
 .badge-blue { background: var(--blue-bg); color: #2563eb; }
 .ocr-running { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); padding: 6px 12px; }
+
+/* ── Debug log ── */
+.debug-panel { border-top: 1px solid var(--border); flex-shrink: 0; }
+.debug-panel summary {
+  padding: 5px 12px; font-size: 11px; color: var(--muted); cursor: pointer;
+  user-select: none; list-style: none; display: flex; align-items: center; gap: 4px;
+}
+.debug-panel summary::-webkit-details-marker { display: none; }
+.debug-panel summary::before { content: '▶'; font-size: 9px; transition: transform .15s; }
+.debug-panel[open] summary::before { transform: rotate(90deg); }
+.debug-pre {
+  margin: 0; padding: 8px 12px 10px; font: 11px/1.5 'SF Mono', 'Fira Code', monospace;
+  background: #0d1117; color: #c9d1d9; height: 140px; overflow-y: auto;
+  white-space: pre-wrap; word-break: break-all;
+}
 </style>
 </head>
 <body>
@@ -337,6 +352,10 @@ input,textarea { font: inherit; }
             <button class="btn btn-primary btn-sm btn-full" id="btn-ocr-card" disabled>▶ Run OCR on selected card</button>
             <button class="btn btn-sm btn-full" id="btn-ocr-all" disabled>▶▶ Run OCR on all accepted cards</button>
           </div>
+          <details class="debug-panel" id="debug-panel">
+            <summary>Debug log</summary>
+            <pre class="debug-pre" id="debug-pre"></pre>
+          </details>
         </div>
 
       </div>
@@ -399,6 +418,18 @@ function toast(msg, dur = 3000) {
   toastTimer = setTimeout(() => el.classList.remove('show'), dur);
 }
 
+function dbg(msg) {
+  const pre = $('debug-pre');
+  if (!pre) { console.log(msg); return; }
+  const t = new Date().toISOString().slice(11, 22);
+  pre.textContent += `[${t}] ${msg}\n`;
+  pre.scrollTop = pre.scrollHeight;
+  // Auto-open log on first message
+  const panel = $('debug-panel');
+  if (panel && !panel.open) panel.open = true;
+  console.log('[NCP]', msg);
+}
+
 // ── UUID ───────────────────────────────────────────────────────────────────────
 const uuid = () => crypto.randomUUID();
 
@@ -427,22 +458,30 @@ function ensureCV() {
     if (cvLoading) return;
     cvLoading = true;
     setDetStatus('<span class="spinner"></span> Loading OpenCV…', false);
+    dbg('Loading OpenCV.js (jsDelivr @techstark/opencv-js 4.8.0)…');
     const s = document.createElement('script');
-    s.src = 'https://docs.opencv.org/4.8.0/opencv.js';
+    s.src = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.8.0-release.1/dist/opencv.js';
     s.async = true;
-    s.onerror = () => cvCallbacks.forEach(cb => cb.rej(new Error('OpenCV load failed')));
+    s.onerror = (e) => {
+      dbg('ERROR: OpenCV script failed to load — ' + (e.message || 'network/CORS error'));
+      cvCallbacks.forEach(cb => cb.rej(new Error('OpenCV load failed')));
+    };
     document.head.appendChild(s);
     s.onload = () => {
-      if (typeof cv === 'undefined') { cvCallbacks.forEach(cb => cb.rej(new Error('cv undefined'))); return; }
+      dbg('Script tag loaded — checking WASM state…');
+      if (typeof cv === 'undefined') {
+        dbg('ERROR: cv global is undefined after script load');
+        cvCallbacks.forEach(cb => cb.rej(new Error('cv undefined'))); return;
+      }
       let resolved = false;
       const resolve = () => {
         if (resolved) return; resolved = true;
+        dbg('OpenCV WASM ready ✓');
         cvReady = true; cvCallbacks.forEach(cb => cb.res()); cvCallbacks = [];
       };
-      // Set callback first (handles case where WASM initialises after onload)
       cv['onRuntimeInitialized'] = resolve;
-      // Check if WASM already initialised (cv.Mat available = ready)
-      try { const t = new cv.Mat(); t.delete(); resolve(); } catch(e) { /* wait for callback */ }
+      try { const t = new cv.Mat(); t.delete(); dbg('cv.Mat() succeeded — already initialised'); resolve(); }
+      catch(e) { dbg('cv.Mat() threw — waiting for onRuntimeInitialized callback…'); }
     };
   });
 }
@@ -599,6 +638,8 @@ async function detectCardsInPhoto(photoId) {
   const photo = photoById(photoId);
   if (!photo) return;
 
+  dbg(`detectCards start — photo "${photo.name}" ${photo.naturalW}×${photo.naturalH}`);
+
   // Remove previous auto-detected cards for this photo (keep manual)
   S.cards = S.cards.filter(c => c.photoId !== photoId || c.manual);
 
@@ -608,6 +649,7 @@ async function detectCardsInPhoto(photoId) {
   try {
     await ensureCV();
   } catch(e) {
+    dbg(`detectCards: OpenCV load FAILED — ${e.message}`);
     setDetStatus('⚠ OpenCV failed to load — draw cards manually', false);
     return;
   }
@@ -618,6 +660,7 @@ async function detectCardsInPhoto(photoId) {
   const detScale = Math.min(1, MAX_DET / Math.max(photo.naturalW, photo.naturalH));
   const detW = Math.round(photo.naturalW * detScale);
   const detH = Math.round(photo.naturalH * detScale);
+  dbg(`detectCards: resize ${photo.naturalW}×${photo.naturalH} → ${detW}×${detH} (scale ${detScale.toFixed(3)})`);
   const srcCanvas = document.createElement('canvas');
   srcCanvas.width = detW; srcCanvas.height = detH;
   srcCanvas.getContext('2d').drawImage(img, 0, 0, detW, detH);
@@ -626,23 +669,29 @@ async function detectCardsInPhoto(photoId) {
   const grayMat = new cv.Mat();
   cv.cvtColor(srcMat, grayMat, cv.COLOR_RGBA2GRAY);
   srcMat.delete();
+  dbg(`detectCards: grayscale Mat ${grayMat.cols}×${grayMat.rows}`);
 
   let allBoxes = [];
   for (let vi = 0; vi < VARIANTS.length; vi++) {
     const variant = VARIANTS[vi];
     setDetStatus(`<span class="spinner"></span> Detecting… variant ${vi+1}/${VARIANTS.length} (${variant})`, false);
+    dbg(`detectCards: variant ${vi+1}/${VARIANTS.length} — ${variant}`);
     await new Promise(r => setTimeout(r, 0)); // yield to browser so UI updates
     const vMat = applyVariant(grayMat, variant);
     try {
       const boxes = detectRectanglesFromMat(vMat, detW, detH);
+      dbg(`  → ${boxes.length} rect(s) found, confs: [${boxes.map(b=>b.conf.toFixed(2)).join(', ')}]`);
       allBoxes.push(...boxes);
-    } catch(e) { /* skip failed variant */ }
+    } catch(e) {
+      dbg(`  → variant ${variant} threw: ${e.message}`);
+    }
     vMat.delete();
     // Early exit: if first 3 variants already agree on ≥1 card with high confidence, skip slow ones
     if (vi === 2) {
       const early = wbfMerge(allBoxes, 3);
+      dbg(`detectCards: early-exit check after 3 variants — ${early.length} merged, top conf=${early[0]?.conf.toFixed(3) ?? 'n/a'}`);
       if (early.length > 0 && early[0].conf > 0.6) {
-        allBoxes = allBoxes.map(b => b); // keep accumulated, just stop
+        dbg(`detectCards: early exit triggered (conf ${early[0].conf.toFixed(3)} > 0.6)`);
         grayMat.delete();
         const scaleBack = b => ({ ...b, corners: b.corners.map(p => ({ x: p.x/detScale, y: p.y/detScale })) });
         finishDetection(photoId, wbfMerge(allBoxes, vi + 1).map(scaleBack)); // use actual variant count
@@ -652,7 +701,9 @@ async function detectCardsInPhoto(photoId) {
   }
   grayMat.delete();
   const scaleBack = b => ({ ...b, corners: b.corners.map(p => ({ x: p.x/detScale, y: p.y/detScale })) });
-  finishDetection(photoId, wbfMerge(allBoxes, VARIANTS.length).map(scaleBack));
+  const merged = wbfMerge(allBoxes, VARIANTS.length).map(scaleBack);
+  dbg(`detectCards: WBF merged → ${merged.length} card(s), confs: [${merged.map(b=>b.conf.toFixed(2)).join(', ')}]`);
+  finishDetection(photoId, merged);
 }
 
 function finishDetection(photoId, merged) {
@@ -1189,23 +1240,33 @@ async function runOCROnCard(cardId) {
   const photo = card ? photoById(card.photoId) : null;
   if (!card || !photo) return;
 
+  dbg(`OCR start — card #${card.num} (${cardId.slice(0,8)})`);
   card.ocrStatus = 'running';
   renderCardList();
   updateHdrStatus();
 
   try {
     // Build crop canvas if not cached
-    if (!card.cropCanvas) card.cropCanvas = buildCropCanvas(card, photo);
+    if (!card.cropCanvas) {
+      dbg(`OCR: building crop canvas…`);
+      card.cropCanvas = buildCropCanvas(card, photo);
+    }
     if (!card.cropCanvas) throw new Error('Could not crop card');
+    dbg(`OCR: crop canvas ${card.cropCanvas.width}×${card.cropCanvas.height}`);
 
     const pre = preprocessForOCR(card.cropCanvas);
-    const w = await ensureWorker(S.useCJK, msg => setDetStatus(`<span class="spinner"></span> ${msg}`, false));
+    dbg(`OCR: preprocessed to ${pre.width}×${pre.height}, starting Tesseract…`);
+    const w = await ensureWorker(S.useCJK, msg => { setDetStatus(`<span class="spinner"></span> ${msg}`, false); dbg(`OCR worker: ${msg}`); });
     const { data } = await w.recognize(pre);
     card.ocrStatus = 'done';
     const rawText = data.text;
+    const rawLines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+    dbg(`OCR: done — ${rawLines.length} lines, avg conf ${data.words?.length ? Math.round(data.words.reduce((s,w)=>s+w.confidence,0)/data.words.length) : '?'}%`);
+    dbg(`OCR raw text: ${rawLines.slice(0,5).join(' | ')}${rawLines.length>5?` … +${rawLines.length-5} more`:''}`);
 
     // Parse fields
     const fields = parseFields(rawText);
+    dbg(`OCR parse: name="${fields.name}" title="${fields.title}" company="${fields.company}" emails=[${fields.emails.join(',')}] phones=[${fields.phones.join(',')}]`);
 
     // Build or update contact
     let contact = contactByCardId(cardId);
@@ -1219,7 +1280,6 @@ async function runOCROnCard(cardId) {
 
     // Build tokens
     S.tokens = S.tokens.filter(t => t.cardId !== cardId); // clear old
-    const rawLines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
     const assignedValues = new Set([
       ...fields.emails, ...fields.phones, fields.linkedin, fields.website,
       fields.name, fields.title, fields.company,
@@ -1240,8 +1300,10 @@ async function runOCROnCard(cardId) {
       }
     }
 
+    dbg(`OCR: ${S.tokens.filter(t=>t.cardId===cardId).length} tokens built (${S.tokens.filter(t=>t.cardId===cardId&&t.assignedTo).length} assigned)`);
     setDetStatus(`✓ OCR done — ${rawLines.length} lines extracted`, false);
   } catch(e) {
+    dbg(`OCR ERROR: ${e.message}`);
     card.ocrStatus = 'error';
     toast('OCR failed: ' + e.message, 5000);
     setDetStatus('⚠ OCR failed', true);
