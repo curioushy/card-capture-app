@@ -186,6 +186,27 @@ input,textarea { font: inherit; }
 .rot-row input[type=range] { flex: 1; }
 .rot-angle { font-size: 11px; color: var(--muted); min-width: 40px; text-align: right; }
 
+/* ── Selected card preview (inside Panel 1) ── */
+.card-preview { padding: 10px 12px 12px; border-top: 1px solid var(--border); background: var(--bg); }
+.card-preview-hd {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted);
+  margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;
+}
+.card-preview-meta { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--muted); font-size: 10px; }
+.card-preview-body {
+  width: 100%; min-height: 80px; background: #111; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); overflow: hidden; display: flex; align-items: center; justify-content: center;
+}
+.card-preview-body canvas, .card-preview-body img {
+  display: block; max-width: 100%; height: auto;
+}
+
+/* Editable token field ── contenteditable state */
+.token-chip[contenteditable="true"], .token-line[contenteditable="true"] {
+  cursor: text !important; background: #fff !important; outline: 2px solid var(--accent);
+  border-color: var(--accent) !important;
+}
+
 /* ── Tokens panel ── */
 .tokens-empty { padding: 40px 16px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.7; }
 .token-group { padding: 10px 12px; border-bottom: 1px solid var(--border); }
@@ -292,7 +313,7 @@ input,textarea { font: inherit; }
 <div id="app">
   <header id="app-header">
     <div class="hdr-title">Name Card Processor</div>
-    <span style="font-size:10px;color:#555;font-weight:500;letter-spacing:.02em;background:#2a2a3e;padding:2px 6px;border-radius:4px">v1.2</span>
+    <span style="font-size:10px;color:#999;font-weight:500;letter-spacing:.02em;background:#2a2a3e;padding:2px 6px;border-radius:4px">v1.3</span>
     <span class="hdr-sep">·</span>
     <div class="hdr-status" id="hdr-status"></div>
     <div class="hdr-right">
@@ -308,6 +329,7 @@ input,textarea { font: inherit; }
         <span class="panel-head-title">Scan</span>
         <div class="panel-head-right">
           <button class="btn btn-sm" id="btn-redetect" style="display:none">↺ Re-detect</button>
+          <button class="btn btn-sm" id="btn-clear-scan" style="display:none;color:var(--red);border-color:var(--red)">✕ Clear</button>
         </div>
       </div>
       <div class="panel-body" id="scan-body" style="display:flex;flex-direction:column;overflow:hidden;">
@@ -346,6 +368,16 @@ input,textarea { font: inherit; }
                 <button class="btn btn-sm btn-full" id="btn-draw-card">+ Draw card manually</button>
               </div>
             </div>
+            <!-- Selected card preview (shown only when a card is selected) -->
+            <div class="card-preview" id="card-preview" style="display:none">
+              <div class="card-preview-hd">
+                <span>Selected card preview</span>
+                <span class="card-preview-meta" id="card-preview-meta"></span>
+              </div>
+              <div class="card-preview-body" id="card-preview-body">
+                <span style="color:var(--muted);font-size:11px">Preparing…</span>
+              </div>
+            </div>
           </div>
           <div class="scan-controls">
             <label class="lang-row">
@@ -359,14 +391,14 @@ input,textarea { font: inherit; }
       </div>
     </aside>
 
-    <!-- ── Panel 2: OCR Tokens ───────────────────────── -->
+    <!-- ── Panel 2: Extracted ────────────────────────── -->
     <section class="panel" id="panel-tokens">
       <div class="panel-head">
-        <span class="panel-head-title">OCR Tokens</span>
-        <div class="panel-head-right" style="font-size:11px;color:var(--muted)">drag to assign →</div>
+        <span class="panel-head-title">Extracted</span>
+        <div class="panel-head-right" style="font-size:11px;color:var(--muted)">double-click to edit · drag to assign →</div>
       </div>
       <div class="panel-body" id="tokens-body">
-        <div class="tokens-empty">Select a card in Panel 1<br>then run OCR to see tokens</div>
+        <div class="tokens-empty">Select a card in Panel 1<br>then run OCR to see extracted fields</div>
       </div>
     </section>
 
@@ -1090,9 +1122,55 @@ function setActiveCard(cardId) {
   renderCardList();
   renderOverlay();
   renderRotControls();
+  renderCardPreview();
   renderTokensPanel();
   renderContactsPanel();
   updateOCRButtons();
+}
+
+// ── Card preview (zoomed view of the selected card's crop) ────────────────────
+function renderCardPreview() {
+  const wrap = $('card-preview');
+  const body = $('card-preview-body');
+  const meta = $('card-preview-meta');
+  if (!S.activeCardId) { wrap.style.display = 'none'; return; }
+  const card = cardById(S.activeCardId);
+  const photo = card ? photoById(card.photoId) : null;
+  if (!card || !photo) { wrap.style.display = 'none'; return; }
+
+  wrap.style.display = 'block';
+
+  // Build crop canvas lazily (only needs cvReady for the dewarp path)
+  if (!card.cropCanvas) {
+    try { card.cropCanvas = buildCropCanvas(card, photo); } catch(e) { /* fall back below */ }
+  }
+
+  body.innerHTML = '';
+  if (card.cropCanvas) {
+    // Make a display clone at the panel width so the DOM-attached canvas doesn't mutate the cached one
+    const disp = document.createElement('canvas');
+    const panelW = Math.min(body.clientWidth || 260, 280);
+    const ratio = card.cropCanvas.height / card.cropCanvas.width;
+    disp.width = panelW;
+    disp.height = Math.round(panelW * ratio);
+    disp.getContext('2d').drawImage(card.cropCanvas, 0, 0, disp.width, disp.height);
+    body.appendChild(disp);
+    meta.textContent = `C${card.num} · ${card.cropCanvas.width}×${card.cropCanvas.height}px${card.manual ? ' · manual' : ''}`;
+  } else {
+    // Fallback: plain bounding-box crop from the photo
+    const xs = card.corners.map(p=>p.x), ys = card.corners.map(p=>p.y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const W = Math.max(10, Math.round(maxX - minX));
+    const H = Math.max(10, Math.round(maxY - minY));
+    const disp = document.createElement('canvas');
+    const panelW = Math.min(body.clientWidth || 260, 280);
+    disp.width = panelW;
+    disp.height = Math.round(panelW * H / W);
+    disp.getContext('2d').drawImage(photo._img, minX, minY, W, H, 0, 0, disp.width, disp.height);
+    body.appendChild(disp);
+    meta.textContent = `C${card.num} · ${W}×${H}px (preview)`;
+  }
 }
 
 // ── Rotation controls ──────────────────────────────────────────────────────────
@@ -1210,9 +1288,31 @@ function setActivePhoto(photoId) {
 
   renderPhotoStrip();
   renderCardList();
+  renderCardPreview();
+  renderTokensPanel();  // clear tokens when photo switches (activeCardId was reset above)
   setDetStatus('', false);
   $('btn-redetect').style.display = '';
+  $('btn-clear-scan').style.display = '';
   updateOCRButtons();
+}
+
+// Clear everything in the scan panel — photos, detected cards, tokens, contacts
+function clearScanAll() {
+  if (!S.photos.length && !S.cards.length && !S.contacts.length) {
+    toast('Nothing to clear'); return;
+  }
+  const msg = `Clear ${S.photos.length} photo(s), ${S.cards.length} card(s), ${S.contacts.length} contact(s)?`;
+  if (!confirm(msg)) return;
+  S.photos = []; S.cards = []; S.tokens = []; S.contacts = [];
+  S.activePhotoId = null; S.activeCardId = null; S.activeContactId = null;
+  S.cardCounter = 0;
+  dbg('Clear All: wiped all scan state');
+  resetToUpload();
+  renderTokensPanel();
+  renderContactsPanel();
+  updateOCRButtons();
+  updateHdrStatus();
+  toast('Cleared');
 }
 
 function renderPhotoStrip() {
@@ -1252,6 +1352,7 @@ function resetToUpload() {
   $('upload-zone').style.display = '';
   $('scan-content').style.display = 'none';
   $('btn-redetect').style.display = 'none';
+  $('btn-clear-scan').style.display = 'none';
   renderPhotoStrip();
   renderTokensPanel();
   renderContactsPanel();
@@ -1287,32 +1388,97 @@ async function ensureWorker(useCJK, onProgress) {
     w = await Tesseract.createWorker(useCJK ? 'eng+chi_sim' : 'eng', 1, {
       logger: m => { if (m.status === 'recognizing text' && onProgress) onProgress(null, m.progress); }
     });
-    await w.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' });
+    // PSM 11 = sparse text. Business cards have scattered text blocks at varying
+    // positions and sizes — PSM 6 (uniform block) merges things incorrectly.
+    // PSM 11 finds text anywhere without assuming a layout.
+    await w.setParameters({
+      tessedit_pageseg_mode: '11',
+      preserve_interword_spaces: '1',
+      user_defined_dpi: '300',
+    });
     if (useCJK) tWorkerCJK = w; else tWorkerEng = w;
   }
   return w;
 }
 
-// Tier A preprocessing (reused from prior iteration)
+// Otsu's threshold — computes optimal binarization cut from a luminance histogram
+function otsuThreshold(hist, total) {
+  let sum = 0;
+  for (let t = 0; t < 256; t++) sum += t * hist[t];
+  let sumB = 0, wB = 0, wF = 0, varMax = 0, threshold = 127;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t]; if (wB === 0) continue;
+    wF = total - wB; if (wF === 0) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+    const between = wB * wF * (mB - mF) * (mB - mF);
+    if (between > varMax) { varMax = between; threshold = t; }
+  }
+  return threshold;
+}
+
+// Improved OCR preprocessing:
+//   1. Upscale to long-edge ~1800 px (Tesseract accuracy drops below ~1000 px per line)
+//   2. Greyscale + 1st/99th percentile contrast stretch (kill camera vignetting)
+//   3. Otsu binarisation — produces crisp black-on-white that Tesseract prefers
+//      over photographic greys, especially when card background has a tint
+//   4. Wrap in white padding — gives Tesseract layout breathing room and avoids
+//      edge-clipping of border characters in PSM 11 sparse-text mode
 function preprocessForOCR(canvas) {
   const targetMax = 1800;
   const curMax = Math.max(canvas.width, canvas.height);
   const scale = curMax < targetMax ? Math.min(3, targetMax / curMax) : 1;
-  const W = Math.round(canvas.width * scale), H = Math.round(canvas.height * scale);
+  const W0 = Math.round(canvas.width * scale), H0 = Math.round(canvas.height * scale);
+  const pad = Math.round(Math.min(W0, H0) * 0.05);   // 5% white border
+  const W = W0 + pad * 2, H = H0 + pad * 2;
+
   const out = document.createElement('canvas'); out.width = W; out.height = H;
   const ctx = out.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(canvas, 0, 0, W, H);
-  const img = ctx.getImageData(0, 0, W, H); const d = img.data;
+  ctx.drawImage(canvas, pad, pad, W0, H0);
+
+  const img = ctx.getImageData(pad, pad, W0, H0); const d = img.data;
+
+  // Histogram in the image region only (ignore padding)
   const hist = new Uint32Array(256);
-  for (let i = 0; i < d.length; i += 4) hist[(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2])|0]++;
-  const total = d.length/4|0;
-  let acc=0, lo=0, hi=255;
-  for (let v=0;v<256;v++){acc+=hist[v];if(acc>=total*.01){lo=v;break;}} acc=0;
-  for (let v=0;v<256;v++){acc+=hist[v];if(acc>=total*.99){hi=v;break;}}
-  const range = Math.max(1, hi-lo);
-  for (let i=0;i<d.length;i+=4){ let s=((0.299*d[i]+0.587*d[i+1]+0.114*d[i+2])-lo)/range*255; s=Math.max(0,Math.min(255,s)); d[i]=d[i+1]=d[i+2]=s; }
-  ctx.putImageData(img, 0, 0);
+  for (let i = 0; i < d.length; i += 4) {
+    const y = (0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]) | 0;
+    hist[y]++;
+  }
+  const total = (d.length / 4) | 0;
+
+  // 1%/99% contrast stretch
+  let acc = 0, lo = 0, hi = 255;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= total * 0.01) { lo = v; break; } }
+  acc = 0;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= total * 0.99) { hi = v; break; } }
+  const range = Math.max(1, hi - lo);
+
+  // Write stretched greys back AND build a new histogram for Otsu
+  const hist2 = new Uint32Array(256);
+  for (let i = 0; i < d.length; i += 4) {
+    let s = ((0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]) - lo) / range * 255;
+    s = s < 0 ? 0 : (s > 255 ? 255 : s) | 0;
+    hist2[s]++;
+    d[i] = d[i+1] = d[i+2] = s;
+  }
+  const t = otsuThreshold(hist2, total);
+
+  // Binarize — black text on white background (flip if needed)
+  // Count dark pixels to decide if text is dark-on-light (usual) vs light-on-dark
+  let darkCount = 0;
+  for (let v = 0; v <= t; v++) darkCount += hist2[v];
+  const darkIsText = darkCount < total * 0.5;   // text is the minority, usually
+  for (let i = 0; i < d.length; i += 4) {
+    const gray = d[i];
+    const isDark = gray <= t;
+    const isText = darkIsText ? isDark : !isDark;
+    const v = isText ? 0 : 255;
+    d[i] = d[i+1] = d[i+2] = v;
+  }
+  ctx.putImageData(img, pad, pad);
   return out;
 }
 
@@ -1430,10 +1596,22 @@ function parseFields(text) {
 function renderTokensPanel() {
   const body = $('tokens-body');
   const activeContact = S.activeContactId ? S.contacts.find(c=>c.id===S.activeContactId) : null;
-  const tokens = S.tokens;
 
+  // Filter by active card only — selecting another card swaps the view in, no accumulation
+  const activeCard = S.activeCardId ? cardById(S.activeCardId) : null;
+  const tokens = activeCard ? S.tokens.filter(t => t.cardId === activeCard.id) : [];
+
+  if (!activeCard) {
+    body.innerHTML = '<div class="tokens-empty">Select a card in Panel 1<br>then run OCR to see extracted fields</div>';
+    return;
+  }
   if (!tokens.length) {
-    body.innerHTML = '<div class="tokens-empty">Select a card in Panel 1<br>then run OCR to see tokens</div>';
+    const msg = activeCard.ocrStatus === 'running'
+      ? '<div class="tokens-empty"><span class="spinner"></span><br>Running OCR on this card…</div>'
+      : activeCard.ocrStatus === 'error'
+      ? '<div class="tokens-empty" style="color:var(--red)">OCR failed for this card.<br>See debug log.</div>'
+      : '<div class="tokens-empty">No OCR run yet for this card.<br>Click <b>Run OCR on selected card</b> →</div>';
+    body.innerHTML = msg;
     return;
   }
 
@@ -1448,6 +1626,18 @@ function renderTokensPanel() {
   function isActive(t) { return activeContact && t.assignedTo && t.assignedTo.contactId === activeContact.id; }
   function srcClass(t) { return isActive(t) ? 'src-active' : (t.assignedTo ? 'assigned' : ''); }
 
+  function attachBehaviour(el, t, valSelector) {
+    el.draggable = true;
+    el.dataset.tokenId = t.id;
+    addTokenDragHandlers(el, t);
+    // Double-click to edit; single click still assigns if a field is active
+    const valEl = valSelector ? el.querySelector(valSelector) : el.querySelector('span:first-child');
+    el.addEventListener('dblclick', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      beginTokenEdit(el, valEl, t);
+    });
+  }
+
   function chipGroup(title, list) {
     if (!list.length) return;
     const g = document.createElement('div'); g.className = 'token-group';
@@ -1455,10 +1645,9 @@ function renderTokensPanel() {
     const chips = g.querySelector('.token-chips');
     for (const t of list) {
       const chip = document.createElement('div');
-      chip.className = `token-chip ${srcClass(t)}`; chip.draggable = true;
-      chip.dataset.tokenId = t.id;
-      chip.innerHTML = `<span>${t.value}</span><span class="token-src">C${cardById(t.cardId)?.num||'?'}</span>`;
-      addTokenDragHandlers(chip, t);
+      chip.className = `token-chip ${srcClass(t)}`;
+      chip.innerHTML = `<span class="tk-val">${escapeHtml(t.value)}</span><span class="token-src">C${cardById(t.cardId)?.num||'?'}</span>`;
+      attachBehaviour(chip, t, '.tk-val');
       chips.appendChild(chip);
     }
     body.appendChild(g);
@@ -1471,10 +1660,9 @@ function renderTokensPanel() {
     const linesEl = g.querySelector('.token-lines');
     for (const t of list) {
       const line = document.createElement('div');
-      line.className = `token-line ${srcClass(t)}`; line.draggable = true;
-      line.dataset.tokenId = t.id;
-      line.innerHTML = `<span class="token-line-val" title="${t.value}">${t.value}</span><span class="token-src">C${cardById(t.cardId)?.num||'?'}</span>`;
-      addTokenDragHandlers(line, t);
+      line.className = `token-line ${srcClass(t)}`;
+      line.innerHTML = `<span class="token-line-val tk-val" title="${escapeHtml(t.value)}">${escapeHtml(t.value)}</span><span class="token-src">C${cardById(t.cardId)?.num||'?'}</span>`;
+      attachBehaviour(line, t, '.tk-val');
       linesEl.appendChild(line);
     }
     body.appendChild(g);
@@ -1487,12 +1675,64 @@ function renderTokensPanel() {
   lineGroup('Text Lines', lines);
 }
 
+function escapeHtml(s) {
+  return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+}
+
+// Begin in-place edit on a token value span
+function beginTokenEdit(rowEl, valEl, token) {
+  if (!valEl) return;
+  rowEl.draggable = false;
+  rowEl.setAttribute('contenteditable', 'true');
+  // focus on the value span instead of the wrapper so drag-chip doesn't also become editable
+  valEl.setAttribute('contenteditable', 'true');
+  valEl.focus();
+  // select all text
+  const range = document.createRange(); range.selectNodeContents(valEl);
+  const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+
+  const commit = () => {
+    rowEl.removeAttribute('contenteditable');
+    valEl.removeAttribute('contenteditable');
+    rowEl.draggable = true;
+    const newVal = valEl.textContent.trim();
+    if (newVal && newVal !== token.value) {
+      const oldVal = token.value;
+      token.value = newVal;
+      // If assigned, update the contact field too
+      if (token.assignedTo) {
+        const contact = S.contacts.find(c => c.id === token.assignedTo.contactId);
+        if (contact) {
+          const f = token.assignedTo.field;
+          if (Array.isArray(contact[f])) {
+            const i = contact[f].indexOf(oldVal);
+            if (i !== -1) contact[f][i] = newVal;
+          } else {
+            contact[f] = newVal;
+          }
+          renderContactsPanel();
+        }
+      }
+      dbg(`Token edit: "${oldVal}" → "${newVal}"`);
+    }
+  };
+
+  valEl.addEventListener('blur', commit, { once: true });
+  valEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter')  { e.preventDefault(); valEl.blur(); }
+    if (e.key === 'Escape') { e.preventDefault(); valEl.textContent = token.value; valEl.blur(); }
+  });
+}
+
 function addTokenDragHandlers(el, token) {
   el.addEventListener('dragstart', e => {
+    // Don't initiate drag when in edit mode
+    if (el.getAttribute('contenteditable') === 'true') { e.preventDefault(); return; }
     e.dataTransfer.setData('text/plain', token.id);
     e.dataTransfer.effectAllowed = 'copy';
   });
   el.addEventListener('click', () => {
+    if (el.getAttribute('contenteditable') === 'true') return;
     // Click-to-assign: if there's an active field, assign to it
     if (S.activeFieldKey && S.activeContactId) {
       assignToken(token.id, S.activeContactId, S.activeFieldKey);
@@ -1694,14 +1934,10 @@ function init() {
   // Re-detect
   $('btn-redetect').addEventListener('click', () => { if (S.activePhotoId) detectCardsInPhoto(S.activePhotoId); });
 
-  // Clear all
-  $('btn-clear-all').addEventListener('click', () => {
-    if (!S.photos.length || confirm('Clear all photos and contacts?')) {
-      S.photos = []; S.cards = []; S.tokens = []; S.contacts = [];
-      S.activePhotoId = null; S.activeCardId = null; S.cardCounter = 0;
-      resetToUpload(); updateHdrStatus();
-    }
-  });
+  // Clear all (header)
+  $('btn-clear-all').addEventListener('click', clearScanAll);
+  // Clear all (scan panel)
+  $('btn-clear-scan').addEventListener('click', clearScanAll);
 
   // Draw card manually
   $('btn-draw-card').addEventListener('click', () => {
@@ -1721,13 +1957,13 @@ function init() {
   $('use-cjk').addEventListener('change', e => { S.useCJK = e.target.checked; });
 
   // Rotation
-  $('rot-ccw90').addEventListener('click', () => { const c=cardById(S.activeCardId); if(c){ doRotate(c,-90,0); c.cropCanvas=null; } });
-  $('rot-cw90') .addEventListener('click', () => { const c=cardById(S.activeCardId); if(c){ doRotate(c,+90,0); c.cropCanvas=null; } });
-  $('rot-ccw15').addEventListener('click', () => { const c=cardById(S.activeCardId); if(c){ doRotate(c,0,-15); $('rot-slider').value=c.rotFine; } });
-  $('rot-cw15') .addEventListener('click', () => { const c=cardById(S.activeCardId); if(c){ doRotate(c,0,+15); $('rot-slider').value=c.rotFine; } });
+  $('rot-ccw90').addEventListener('click', () => { const c=cardById(S.activeCardId); if(c){ doRotate(c,-90,0); c.cropCanvas=null; renderCardPreview(); } });
+  $('rot-cw90') .addEventListener('click', () => { const c=cardById(S.activeCardId); if(c){ doRotate(c,+90,0); c.cropCanvas=null; renderCardPreview(); } });
+  $('rot-ccw15').addEventListener('click', () => { const c=cardById(S.activeCardId); if(c){ doRotate(c,0,-15); $('rot-slider').value=c.rotFine; renderCardPreview(); } });
+  $('rot-cw15') .addEventListener('click', () => { const c=cardById(S.activeCardId); if(c){ doRotate(c,0,+15); $('rot-slider').value=c.rotFine; renderCardPreview(); } });
   $('rot-slider').addEventListener('input', e => {
     const c=cardById(S.activeCardId); if(!c) return;
-    c.rotFine = +e.target.value; c.cropCanvas = null; updateRotAngleDisplay(c);
+    c.rotFine = +e.target.value; c.cropCanvas = null; updateRotAngleDisplay(c); renderCardPreview();
   });
 
   // Export
